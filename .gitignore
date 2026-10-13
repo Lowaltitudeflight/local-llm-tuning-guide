@@ -1,0 +1,27 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# 本地测量产物（请只提交汇总表格，不要提交原始日志）
+*.log
+results/
+measurements/local/
+
+# 临时文件
+*.tmp
+.tmp-*
+*~

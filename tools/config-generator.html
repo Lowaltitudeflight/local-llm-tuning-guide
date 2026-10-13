@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>本地大模型配置生成器 · Local LLM Config Generator</title>
+<style>
+  :root{
+    --bg:#f6f6f3; --card:#ffffff; --ink:#1c1c1a; --muted:#5f5e5a;
+    --line:#dcdad3; --accent:#0f6e56; --accent-soft:#e8f4ef; --warn:#854f0b; --warn-soft:#fdf3e2;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI","Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:14px; line-height:1.65;
+  }
+  .wrap{max-width:900px; margin:0 auto; padding:32px 20px 64px}
+  header{margin-bottom:24px}
+  h1{font-size:20px; font-weight:600; margin:0 0 6px}
+  .sub{color:var(--muted); font-size:13px; margin:0}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px}
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px}
+  label{display:block; font-size:13px; font-weight:500; margin-bottom:5px}
+  .hint{font-weight:400; color:var(--muted); font-size:12px}
+  input,select{
+    width:100%; padding:8px 10px; font-size:14px; font-family:inherit;
+    border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink);
+  }
+  input:focus,select:focus{outline:2px solid var(--accent-soft); border-color:var(--accent)}
+  .out{background:#1c1c1a; color:#eae8e2; border-radius:10px; padding:16px;
+       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px;
+       line-height:1.7; white-space:pre-wrap; word-break:break-all; overflow-x:auto}
+  h2{font-size:15px; font-weight:600; margin:0 0 12px}
+  h3{font-size:13px; font-weight:600; margin:18px 0 8px; color:var(--accent)}
+  .summary{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-bottom:16px}
+  .metric{background:var(--accent-soft); border-radius:8px; padding:10px 12px}
+  .metric .k{font-size:12px; color:var(--muted)}
+  .metric .v{font-size:17px; font-weight:600; color:var(--accent)}
+  ul{margin:8px 0; padding-left:20px}
+  li{margin-bottom:6px}
+  .note{background:var(--warn-soft); border-left:3px solid var(--warn); border-radius:0 8px 8px 0;
+        padding:10px 14px; margin:10px 0; font-size:13px}
+  table{width:100%; border-collapse:collapse; font-size:13px; margin-top:8px}
+  th,td{text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{font-weight:500; color:var(--muted); font-size:12px}
+  code{background:#efeee9; padding:1px 5px; border-radius:4px; font-size:12.5px;
+       font-family:ui-monospace,Menlo,Consolas,monospace}
+  footer{color:var(--muted); font-size:12px; text-align:center; margin-top:28px}
+  footer a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>本地大模型配置生成器</h1>
+    <p class="sub">根据你的实际硬件拓扑，生成一份合理的 vLLM 启动配置，并解释每个参数为什么这样设。</p>
+  </header>
+
+  <div class="card">
+    <div class="grid">
+      <div>
+        <label>GPU 数量</label>
+        <input id="n" type="number" min="1" max="16" value="4">
+      </div>
+      <div>
+        <label>单卡显存 <span class="hint">GB</span></label>
+        <input id="vram" type="number" min="8" max="200" value="96">
+      </div>
+      <div>
+        <label>GPU 间互联方式 <span class="hint">跑 nvidia-smi topo -m 确认</span></label>
+        <select id="link">
+          <option value="nvlink">NVLink</option>
+          <option value="pix" selected>同一 PCIe Switch（PIX / PXB）</option>
+          <option value="sys">跨 PCIe Switch 或跨 CPU（PHB / SYS）</option>
+        </select>
+      </div>
+      <div id="groupWrap" style="display:none">
+        <label>同一 PCIe / NUMA 组内卡数 <span class="hint">每组几张</span></label>
+        <input id="group" type="number" min="1" max="16" value="2">
+      </div>
+      <div>
+        <label>模型能否放进单卡 <span class="hint">含目标上下文的 KV</span></label>
+        <select id="fits">
+          <option value="no">不能，必须切分</option>
+          <option value="yes">能</option>
+        </select>
+      </div>
+      <div>
+        <label>服务目标</label>
+        <select id="goal">
+          <option value="latency">低延迟（单请求快）</option>
+          <option value="balanced" selected>均衡</option>
+          <option value="throughput">高吞吐（并发多）</option>
+        </select>
+      </div>
+      <div>
+        <label>目标上下文长度 <span class="hint">token</span></label>
+        <input id="ctx" type="number" min="2048" max="1048576" step="1024" value="32768">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>建议配置</h2>
+    <div id="result"></div>
+  </div>
+
+  <footer>
+    来自 <a href="https://gitee.com/wang-guangshuooo/local-llm-tuning-guide">local-llm-tuning-guide</a> ·
+    输出为结构合理起点，最优值需在你的机器上实测确认
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+
+  function recalc(){
+    var n      = Math.max(1, parseInt($('n').value,10) || 1);
+    var vram   = parseFloat($('vram').value) || 24;
+    var link   = $('link').value;
+    var group  = Math.max(1, parseInt($('group').value,10) || 1);
+    var fits   = $('fits').value;
+    var goal   = $('goal').value;
+    var ctx    = Math.max(2048, parseInt($('ctx').value,10) || 8192);
+
+    $('groupWrap').style.display = (link === 'sys') ? '' : 'none';
+    if (link !== 'sys') { group = n; }
+    if (group > n) { group = n; }
+
+    var tp = 1, pp = 1, dp = 1;
+    var notes = [], why = [];
+
+    /* ---------- 并行策略 ---------- */
+    if (fits === 'yes') {
+      dp = n;
+      notes.push('模型能放进单卡，因此建议开 <b>' + n + ' 个独立副本</b>（数据并行）。副本之间零通信，吞吐近似线性叠加，是这类硬件上性价比最高的方案。');
+      why.push(['副本数 ' + n, '每张卡一个完整副本，互不通信']);
+    } else if (link === 'nvlink') {
+      tp = n;
+      notes.push('检测到 NVLink，可按常规建议配置张量并行。');
+      why.push(['--tensor-parallel-size ' + tp, 'NVLink 带宽充裕，TP 可开到卡数']);
+    } else if (link === 'pix') {
+      tp = n;
+      notes.push('所有卡在同一 PCIe Switch 下，TP 可以开到卡数；但要注意 all-reduce 模式与 NCCL 参数（见 03 通信优化）。');
+      why.push(['--tensor-parallel-size ' + tp, '同组 PCIe Switch，TP 不跨边界']);
+    } else {
+      // 跨 PCIe Switch / 跨 CPU
+      tp = group;
+      pp = Math.max(1, Math.floor(n / group));
+      notes.push('检测到卡跨越 PCIe Switch 或 CPU Socket。<b>TP 已限制为每组的卡数（' + group + '）</b>，跨组的部分交给流水线并行（PP=' + pp + '）承担——PP 只在层边界传激活值，代价远小于 TP 的逐层 all-reduce。');
+      notes.push('如果 TP=' + tp + ' 仍然组内跨边界，请继续减小 TP 并增大 PP。');
+      why.push(['--tensor-parallel-size ' + tp, '限制在同一个 PCIe / NUMA 组内，避免走 CPU 间链路']);
+      if (pp > 1) why.push(['--pipeline-parallel-size ' + pp, '用 PP 跨越慢链路，通信量小得多']);
+    }
+
+    /* ---------- 并发与显存 ---------- */
+    var seqs;
+    if (goal === 'latency')      { seqs = dp > 1 ? 32 : 8; }
+    else if (goal === 'throughput') { seqs = dp > 1 ? 128 : 64; }
+    else                          { seqs = dp > 1 ? 64 : 32; }
+    if (ctx >= 131072 && seqs > 32) { seqs = 32; }
+
+    var kv = (ctx >= 65536) ? 'fp8' : 'auto';
+
+    var util = '0.90';
+    if (goal === 'throughput') util = '0.92';
+
+    /* ---------- 组装命令 ---------- */
+    var lines = [];
+    if (dp > 1) {
+      lines.push('# 需要启动 ' + dp + ' 个独立实例，各占一组卡，前面挂负载均衡');
+      lines.push('# 示例（副本 1）：');
+      lines.push('CUDA_VISIBLE_DEVICES=0 vllm serve <your-model> \\');
+    } else {
+      lines.push('vllm serve <your-model> \\');
+    }
+    if (tp > 1) lines.push('  --tensor-parallel-size ' + tp + ' \\');
+    if (pp > 1) lines.push('  --pipeline-parallel-size ' + pp + ' \\');
+    lines.push('  --gpu-memory-utilization ' + util + ' \\');
+    lines.push('  --max-model-len ' + ctx + ' \\');
+    lines.push('  --max-num-seqs ' + seqs + ' \\');
+    lines.push('  --max-num-batched-tokens 4096 \\');
+    if (kv === 'fp8') lines.push('  --kv-cache-dtype fp8 \\');
+    lines.push('  --enable-prefix-caching \\');
+    lines.push('  --enable-chunked-prefill \\');
+    lines.push('  --host 0.0.0.0 --port 8000');
+    if (dp > 1) {
+      lines.push('');
+      lines.push('# 副本 2、3… 依次使用 CUDA_VISIBLE_DEVICES=1,2,3… 并递增 --port');
+    }
+
+    /* ---------- 参数解释 ---------- */
+    why.push(['--gpu-memory-utilization ' + util, '留出工作区；不建议一上手就调到 0.95']);
+    why.push(['--max-model-len ' + ctx, '目标上下文；超出显存时先降 KV 精度，再缩上下文']);
+    why.push(['--max-num-seqs ' + seqs, goal === 'latency' ? '低延迟目标，控制并发以减少排队' : (goal === 'throughput' ? '高吞吐目标，尽量填满显存' : '均衡起点，按实测调整')]);
+    if (kv === 'fp8') why.push(['--kv-cache-dtype fp8', '长上下文下 KV 占用过大，FP8 是代价最低的节省手段']);
+    why.push(['--enable-prefix-caching', '有重复前缀（多轮对话 / RAG / 固定 system prompt）时收益显著']);
+    why.push(['--enable-chunked-prefill', '长 prompt 不阻塞正在解码的请求']);
+
+    /* ---------- 渲染 ---------- */
+    var html = '';
+    html += '<div class="summary">';
+    html += '<div class="metric"><div class="k">张量并行 TP</div><div class="v">' + tp + '</div></div>';
+    html += '<div class="metric"><div class="k">流水线并行 PP</div><div class="v">' + pp + '</div></div>';
+    html += '<div class="metric"><div class="k">副本数 DP</div><div class="v">' + dp + '</div></div>';
+    html += '<div class="metric"><div class="k">并发槽位</div><div class="v">' + seqs + '</div></div>';
+    html += '</div>';
+
+    html += '<h3>启动命令</h3>';
+    html += '<div class="out">' + lines.join('\n').replace(/</g,'&lt;') + '</div>';
+
+    html += '<h3>为什么这样设</h3>';
+    html += '<table><tr><th style="width:44%">参数</th><th>理由</th></tr>';
+    for (var i=0;i<why.length;i++){
+      html += '<tr><td><code>' + why[i][0] + '</code></td><td>' + why[i][1] + '</td></tr>';
+    }
+    html += '</table>';
+
+    html += '<h3>需要注意</h3><ul>';
+    for (var j=0;j<notes.length;j++){ html += '<li>' + notes[j] + '</li>'; }
+
+    if (link === 'sys' && fits === 'no') {
+      html += '<li>跨 PCIe / NUMA 边界是性能悬崖。如果实测发现 TP 收益为负，请不要怀疑模型，先回去看 <b>nvidia-smi topo -m</b>。</li>';
+    }
+    if (vram <= 24 && fits === 'no') {
+      html += '<li>消费级卡（24 GB 级）通常 <b>P2P 访问被驱动限制</b>，NCCL 会绕道主机内存，TP 效率极低。若模型能放进 1–2 张卡，多副本几乎总是更好。</li>';
+    }
+    if (ctx >= 262144) {
+      html += '<li>上下文 ≥ 256K 时，KV 缓存可能成为主要显存消耗。先用本文档 06 章的公式估算，再决定是否真的需要这么长。</li>';
+    }
+    html += '<li>本工具给出的是<b>结构合理的起点</b>，不是最优解。上机后请按 benchmarks/METHODOLOGY.md 测一遍，并把结果提交回来。</li>';
+    html += '</ul>';
+
+    $('result').innerHTML = html;
+  }
+
+  ['n','vram','link','group','fits','goal','ctx'].forEach(function(id){
+    $(id).addEventListener('input', recalc);
+    $(id).addEventListener('change', recalc);
+  });
+  recalc();
+})();
+</script>
+</body>
+</html>
