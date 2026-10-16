@@ -45,7 +45,7 @@
 | [06 KV 缓存](docs/06-kv-cache.md) | 显存预算、前缀缓存、长上下文 | 上下文是怎么吃掉显存的 |
 | [配置配方](recipes/) | 按硬件型号的现成配置 | 拿来即用 |
 | [实测数据](benchmarks/) | 数据表与测量方法 | 你自己也能填表 |
-| [配置生成器](tools/config-generator.html) | 输入硬件 → 输出启动命令 | 在线小工具 |
+| [规划工具](tools/) | 输入硬件 → 输出并行策略 | 命令行 + 离线网页 |
 
 ## 数据可信度分级
 
@@ -74,7 +74,13 @@
 
 **如果你要部署一台新机器**：从 [01 硬件与拓扑](docs/01-hardware.md) 开始，先跑一次 `nvidia-smi topo -m`，再去 [配置配方](recipes/) 找最接近你硬件的配置。
 
-**如果你已经有机器但吞吐不理想**：直接用[配置生成器](tools/config-generator.html)，对比它给出的参数和你现在的差异。
+**如果你已经有机器但吞吐不理想**：跑一下规划工具，对比它给出的参数和你现在的差异。
+
+```bash
+python tools/planner.py --gpus A800-80 --count 8 --model qwen2.5-72b --ctx 8192
+```
+
+它会输出互联带宽上限、显存预算、以及 TP / PP / 副本数的推荐组合，每一条都标注依据等级。详见 [tools/README.md](tools/README.md)。
 
 **如果你想贡献数据**：见 [CONTRIBUTING.md](CONTRIBUTING.md)。数据表格已经做好，缺的就是真实机器的测量值。
 

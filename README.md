@@ -45,7 +45,7 @@ Six highest-frequency questions, answered first.
 | [06 KV cache](docs/06-kv-cache.md) | Memory budget, prefix cache, long context | How context eats your VRAM |
 | [Recipes](recipes/) | Ready-to-use configs by hardware | Copy and run |
 | [Benchmarks](benchmarks/) | Data tables and measurement method | Fill the table with your own machine |
-| [Config generator](tools/config-generator.html) | Hardware in, launch command out | Small web tool |
+| [Planner](tools/) | Hardware in, parallel strategy out | CLI + offline web tool |
 
 ## Evidence grading
 
@@ -74,7 +74,14 @@ Six of the highest-confidence judgements, expanded in the chapters.
 
 **Deploying a new machine**: start with [01 Hardware & topology](docs/01-hardware.md), run `nvidia-smi topo -m` once, then find the closest match in [recipes](recipes/).
 
-**Machine already running but slow**: use the [config generator](tools/config-generator.html) and diff its parameters against your current ones.
+**Machine already running but slow**: run the planner and diff its parameters against your current ones.
+
+```bash
+python tools/planner.py --gpus A800-80 --count 8 --model qwen2.5-72b --ctx 8192
+```
+
+It reports the interconnect ceiling, the memory budget, and a TP / PP / replica
+layout — each tagged with an evidence grade. See [tools/README.md](tools/README.md).
 
 **Want to contribute data**: see [CONTRIBUTING.md](CONTRIBUTING.md). The tables are ready; what is missing is measurements from real machines.
 
