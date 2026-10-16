@@ -318,7 +318,7 @@ vllm serve <your-model> \
 
 ## 八、完整指南与工具
 
-GitHub：https://github.com/yangchuan665/local-llm-tuning-guide
+GitHub：https://github.com/Lowaltitudeflight/local-llm-tuning-guide
 Gitee：https://gitee.com/wang-guangshuooo/local-llm-tuning-guide
 
 仓库里包含：
