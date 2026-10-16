@@ -1,37 +1,38 @@
-# 配置配方
+# Configuration Recipes
 
-按硬件型号整理的现成配置。**每个配方都标注了它的适用边界和已知限制**——不要跨型号照抄。
+Ready-to-use configurations, organized by hardware type. **Every recipe states its applicability boundaries and known limitations** — do not copy them across hardware types verbatim.
 
-## 命名规范
+## Naming convention
 
 ```
-<卡数>x-<显存>-<互联>-<备注>.md
-例：4x-96gb-pcie.md
-    8x-24gb-pcie.md
+<gpu-count>x-<vram>-<interconnect>-<notes>.md
+Examples: 4x-96gb-pcie.md
+          8x-24gb-pcie.md
 ```
 
-## 已有配方
+## Available recipes
 
-| 配方 | 硬件 | 状态 |
+| Recipe | Hardware | Status |
 |---|---|---|
-| [4x-96gb-pcie](4x-96gb-pcie.md) | 4 × 96 GB 卡，PCIe 互联（RTX PRO 6000 类） | 参考起点 |
-| [8x-24gb-pcie](8x-24gb-pcie.md) | 8 × 24 GB 卡，PCIe 互联（RTX 4090 类） | 参考起点 |
+| [4x-24gb-pcie](4x-24gb-pcie.md) | 4 × 24 GB cards, PCIe interconnect (RTX 4090 / 3090 class) | Reference starting point |
+| [4x-96gb-pcie](4x-96gb-pcie.md) | 4 × 96 GB cards, PCIe interconnect (RTX PRO 6000 class) | Reference starting point |
+| [8x-24gb-pcie](8x-24gb-pcie.md) | 8 × 24 GB cards, PCIe interconnect (RTX 4090 class) | Reference starting point |
 
-## 配方包含什么
+## What a recipe contains
 
-每个配方文件包含四部分：
+Each recipe file has four sections:
 
-1. **适用边界** —— 什么情况下能用，什么情况下不能用
-2. **拓扑前提** —— 需要跑 `nvidia-smi topo -m` 确认的连接方式
-3. **启动配置** —— 完整可复制的命令，每个参数附一句说明
-4. **已知限制与待验证项** —— 明确写出哪些是推测、哪些需要你实测
+1. **Applicability boundaries** — when it works, and when it does not
+2. **Topology prerequisites** — the connectivity you need to confirm with `nvidia-smi topo -m`
+3. **Launch configuration** — complete, copy-pasteable commands, with a one-line rationale per parameter
+4. **Known limitations and open questions** — explicitly stating which claims are inference and which require you to measure
 
-## 重要声明
+## Important disclaimer
 
-本项目提供的配方是**结构化的起点**，不是经过逐项验证的最优解。
+The recipes in this project are **structured starting points**, not item-by-item validated optima.
 
-- 参数基于公开的工程实践和 [02 并行策略](../docs/02-parallelism.md) 的判断规则推导
-- **不保证在你的具体硬件上是最优的**——PCIe 拓扑、散热、电源策略、模型版本都会影响结果
-- 使用后请按 [benchmarks/METHODOLOGY.md](../benchmarks/METHODOLOGY.md) 测一遍，并把结果提交回来
+- Parameters are derived from public engineering practice and the decision rules in [02 Parallelism](../docs/02-parallelism.md)
+- **No guarantee that they are optimal on your specific hardware** — PCIe topology, cooling, power policy, and model version all affect the outcome
+- After using one, measure it following [benchmarks/METHODOLOGY.md](../benchmarks/METHODOLOGY.md) and submit your results back
 
-**依据：可推导**（配方本身）；具体数值需你自行测量确认。
+**Basis: derivable** (the recipes themselves); the specific numbers need to be confirmed by your own measurements.

@@ -1,126 +1,126 @@
-# 测量方法
+# Measurement Methodology
 
-> 这个项目的价值不在结论，在于**结论可不可复现**。所以测量纪律比测量结果更重要。
+> This project's value lies not in its conclusions, but in **whether those conclusions are reproducible**. That is why measurement discipline matters more than measurement results.
 
-## 为什么要有这份文档
+## Why this document exists
 
-中文技术内容里最常见的问题是：给了数字，但没给条件。于是同一句话在两台机器上真假相反，读者无从判断。
+The most common problem in Chinese-language technical content is: numbers are given, but conditions are not. As a result, the same claim can be true on one machine and false on another, and the reader has no way to tell.
 
-下面这套纪律的目标只有一个：**让另一个人能在自己的机器上判断你的数字是否适用于他。**
+This discipline has exactly one goal: **to let another person determine, on their own machine, whether your numbers apply to them.**
 
-## 一、测量前必须固定的条件
+## 1. Conditions that must be fixed before measuring
 
-任何一项缺失，数据就无法被比较。
+If any one of these is missing, the data cannot be compared.
 
-### 硬件
+### Hardware
 
-- [ ] GPU 型号与数量
-- [ ] **功耗上限**（`nvidia-smi -q -d POWER` 查看；低功耗版本必须注明）
-- [ ] **时钟策略**：锁定频率还是自动（自动时钟下不同散热条件结果不同）
-- [ ] 互联拓扑（`nvidia-smi topo -m` 的摘要）
-- [ ] CPU / NUMA 布局
-- [ ] 系统内存容量
+- [ ] GPU model and count
+- [ ] **Power limit** (check with `nvidia-smi -q -d POWER`; low-power variants must be noted)
+- [ ] **Clock policy**: locked clocks or automatic (under automatic clocks, results differ with cooling conditions)
+- [ ] Interconnect topology (summary of `nvidia-smi topo -m`)
+- [ ] CPU / NUMA layout
+- [ ] System memory capacity
 
-### 软件
+### Software
 
-- [ ] 驱动版本
-- [ ] CUDA 版本
-- [ ] NCCL 版本
-- [ ] 推理框架版本（vLLM / SGLang 等）
-- [ ] **容器镜像的精确 tag 或 digest**
-- [ ] 模型权重的精确 revision / commit
-- [ ] 量化版本（若为社区量化，给出量化工具与配置）
+- [ ] Driver version
+- [ ] CUDA version
+- [ ] NCCL version
+- [ ] Inference framework version (vLLM / SGLang, etc.)
+- [ ] **Exact tag or digest of the container image**
+- [ ] Exact revision / commit of the model weights
+- [ ] Quantization variant (for community quantizations, give the quantization tool and configuration)
 
-### 配置
+### Configuration
 
-- [ ] 服务端完整启动命令（不是"类似这样"，是原样）
-- [ ] 所有相关环境变量
-- [ ] 客户端完整命令
-- [ ] 并发数
-- [ ] prompt 长度（输入 token 数）
-- [ ] 生成长度（输出 token 数）
-- [ ] 采样参数（temperature / top_p / 是否 greedy）
+- [ ] Complete server-side launch command (not "something like this" — verbatim)
+- [ ] All relevant environment variables
+- [ ] Complete client-side command
+- [ ] Concurrency level
+- [ ] Prompt length (input token count)
+- [ ] Generation length (output token count)
+- [ ] Sampling parameters (temperature / top_p / whether greedy)
 
-## 二、测什么指标
+## 2. Which metrics to measure
 
-| 指标 | 定义 | 反映什么 |
+| Metric | Definition | What it reflects |
 |---|---|---|
-| **TTFT** | 请求发出到收到第一个 token 的时间 | prefill 能力 |
-| **输出吞吐** | 单请求解码速度（tok/s） | 解码能力，延迟敏感场景看这个 |
-| **聚合吞吐** | 多并发下的总输出（tok/s） | 吞吐型场景看这个 |
-| **P99 延迟** | 99 分位端到端延迟 | 服务稳定性 |
+| **TTFT** | Time from request sent to first token received | Prefill capability |
+| **Output throughput** | Single-request decode speed (tok/s) | Decode capability; latency-sensitive scenarios look at this |
+| **Aggregate throughput** | Total output under multi-concurrency (tok/s) | Throughput-oriented scenarios look at this |
+| **P99 latency** | 99th-percentile end-to-end latency | Serving stability |
 
-**必须区分单并发与聚合**：只报一个数会严重误导。推荐用 C1 / C8（1 并发 / 8 并发）两个档位，与业界惯例一致。
+**You must distinguish single-concurrency from aggregate**: reporting only one number is seriously misleading. The recommended levels are C1 / C8 (1 concurrent / 8 concurrent), consistent with industry convention.
 
-## 三、测量纪律
+## 3. Measurement discipline
 
-这三条决定了你的数字能不能用：
+These three rules determine whether your numbers are usable:
 
-### 1. 预热
+### 1. Warm-up
 
-推理服务在首批请求时会有编译、显存分配、CUDA 图捕获等一次性开销。**不预热就测，测到的是启动成本，不是推理性能。**
+An inference service has one-time overheads on the first batch of requests: compilation, memory allocation, CUDA graph capture, and so on. **Measure without warming up and you are measuring startup cost, not inference performance.**
 
-建议：丢弃前若干个窗口，只统计稳定后的数据。
+Recommendation: discard the first few windows and only aggregate data from the stable ones.
 
-### 2. 固定窗口 + 多次重复
+### 2. Fixed windows + repeated runs
 
-| 做法 | 说明 |
+| Practice | Explanation |
 |---|---|
-| 固定测量窗口 | 例如 30 秒一个窗口，而不是"跑 100 个请求" |
-| 多次重复 | **至少 3 次独立启动**，不是同一个进程里跑 3 遍 |
-| 报告波动 | 给出范围（如 265.7–277.0），不要只给最好看的那个 |
+| Fixed measurement window | e.g. one 30-second window, rather than "run 100 requests" |
+| Multiple repetitions | **At least 3 independent launches**, not 3 passes inside the same process |
+| Report variance | Give a range (e.g. 265.7–277.0), not just the prettiest number |
 
-社区实践表明，**同配置不同启动之间的差异可达 ±5%**——如果不重复测量，你看到的"版本提升"可能只是噪声。
+Community practice shows that **the same configuration can vary by up to ±5% between launches** — if you do not repeat the measurement, the "version improvement" you observe may just be noise.
 
-### 3. 一次只改一个变量
+### 3. Change one variable at a time
 
-想比较两个配置时，除了目标参数，其他全部保持一致。改了量化又改了并行度，就无法归因。
+When comparing two configurations, keep everything except the target parameter identical. Change the quantization and the parallelism at the same time, and attribution becomes impossible.
 
-## 四、必须报告的内容
+## 4. What you must report
 
-用这个模板提交数据（见 [CONTRIBUTING.md](../CONTRIBUTING.md)）：
+Use this template to submit data (see [CONTRIBUTING.md](../CONTRIBUTING.md)):
 
 ```markdown
-### 硬件
-- GPU：型号 × 数量
-- 功耗上限：
-- 时钟策略：
-- 拓扑摘要：
-- CPU / NUMA：
+### Hardware
+- GPU: model × count
+- Power limit:
+- Clock policy:
+- Topology summary:
+- CPU / NUMA:
 
-### 软件
-- 驱动 / CUDA / NCCL：
-- 框架 + 版本：
-- 镜像 tag：
-- 模型 revision / 量化：
+### Software
+- Driver / CUDA / NCCL:
+- Framework + version:
+- Image tag:
+- Model revision / quantization:
 
-### 服务端
-（完整命令，原样粘贴）
+### Server side
+(complete command, pasted verbatim)
 
-### 客户端
-（完整命令，原样粘贴）
+### Client side
+(complete command, pasted verbatim)
 
-### 工作负载
-- 并发：C1 / C8
-- 输入长度：
-- 输出长度：
-- 采样参数：
+### Workload
+- Concurrency: C1 / C8
+- Input length:
+- Output length:
+- Sampling parameters:
 
-### 结果
-| 配置 | C1 输出 | C8 聚合 | 32K prefill | 备注 |
+### Results
+| Configuration | C1 output | C8 aggregate | 32K prefill | Notes |
 |---|---|---|---|---|
 
-### 测量细节
-- 预热窗口数：
-- 每窗口时长：
-- 独立启动重复次数：
-- 观测到的波动范围：
+### Measurement details
+- Number of warm-up windows:
+- Window duration:
+- Number of independent launch repetitions:
+- Observed variance range:
 ```
 
-## 五、一个必要的态度
+## 5. A necessary attitude
 
-**负面结果同样有价值。**
+**Negative results are just as valuable.**
 
-"我在 8 卡 4090 上试了 TP=8，吞吐只有 TP=2 的 60%"——这种数据能帮后来者省下几天的试错，价值不低于一个漂亮的加速比。
+"I tried TP=8 on eight 4090s and throughput was only 60% of TP=2" — data like that saves whoever comes next days of trial and error, and is worth no less than a pretty speedup number.
 
-本项目欢迎两类提交：**可复现的性能数据**和**可复现的失败经验**。唯一不接受的是没有条件的数字。
+This project welcomes two kinds of submissions: **reproducible performance data** and **reproducible failure reports**. The only thing we do not accept is numbers without conditions.

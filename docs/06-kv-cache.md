@@ -1,148 +1,148 @@
-# 06 KV 缓存
+# 06 KV cache
 
-> 上下文长度是显存的黑洞。这一章讲清楚它怎么吃掉显存，以及有哪些手段能省。
+> Context length is a black hole for VRAM. This chapter explains how it consumes your memory, and what you can do to save it.
 
-## 6.1 先学会算这笔账
+## 6.1 First, learn to do the math
 
-KV 缓存的体积可以精确估算，不需要试错：
+The size of the KV cache can be estimated exactly — no trial and error needed:
 
 ```
-每 token 的 KV 字节数 = 2 × 层数 × KV头数 × head_dim × 每元素字节数
-                        ↑
-                    K 和 V 各一份
+KV bytes per token = 2 × layers × KV heads × head_dim × bytes per element
+                       ↑
+                 one copy each for K and V
 ```
 
-**注意是 `KV头数` 而不是注意力头数**——采用 GQA/MQA 的模型，KV 头数远小于注意力头数，这是它省显存的关键。
+**Note that it is the `KV heads`, not the attention heads** — for models using GQA/MQA, the KV head count is far smaller than the attention head count, and that is the key to their memory savings.
 
-### 算例
+### Worked example
 
-假设一个模型：64 层、8 个 KV 头、head_dim = 128。
+Assume a model with 64 layers, 8 KV heads, and head_dim = 128.
 
-| KV 精度 | 每 token | 32K 上下文 | 128K 上下文 | 1M 上下文 |
+| KV precision | Per token | 32K context | 128K context | 1M context |
 |---|---|---|---|---|
-| BF16（2 B） | 256 KB | 8 GB | 32 GB | 256 GB |
-| FP8（1 B） | 128 KB | 4 GB | 16 GB | 128 GB |
+| BF16 (2 B) | 256 KB | 8 GB | 32 GB | 256 GB |
+| FP8 (1 B) | 128 KB | 4 GB | 16 GB | 128 GB |
 
-看最后一行：**即使 KV 压到 FP8，100 万 token 上下文仍需 128 GB**——超过了一张 96 GB 的卡。
+Look at the last column: **even with the KV cache compressed to FP8, a 1M-token context still needs 128 GB** — more than a single 96 GB card.
 
-这就是"支持 1M 上下文"和"实际能跑 1M 上下文"之间的差距：前者是模型能力，后者取决于你的显存，而框架文档通常只写前者。
+This is the gap between "supports 1M context" and "can actually run 1M context": the former is a model capability, the latter depends on your VRAM, and framework documentation usually only mentions the former.
 
-**依据：可推导**
+**Basis: derivable**
 
-## 6.2 显存预算怎么分
+## 6.2 How to divide the VRAM budget
 
-推理时的显存被四部分瓜分：
+At inference time, VRAM is split four ways:
 
 ```
-总显存 = 模型权重 + KV 缓存 + 激活与工作区 + 框架开销
+Total VRAM = model weights + KV cache + activations and workspace + framework overhead
 ```
 
-`gpu-memory-utilization`（vLLM 中常见默认 0.90–0.93）控制的是**后三项能用多少**。它不是一个可以无脑调高的参数：
+`gpu-memory-utilization` (commonly defaulting to 0.90–0.93 in vLLM) controls **how much of the last three can be used**. It is not a knob you can mindlessly turn up:
 
-| 调高 | 调低 |
+| Raising it | Lowering it |
 |---|---|
-| 更多 KV 空间，更长上下文 | 更多工作区，更稳 |
-| 风险：OOM、碎片、突发峰值失败 | 风险：并发能力下降 |
+| More KV space, longer context | More workspace, more stability |
+| Risk: OOM, fragmentation, failures on bursty peaks | Risk: reduced concurrency capacity |
 
-如果只是"差一点显存"，**优先调这个参数或缩短上下文，而不是换更激进的量化格式**（见 [04 量化选型](04-quantization.md)）。
+If you are only "slightly short on VRAM", **adjust this parameter or shorten the context first, rather than switching to a more aggressive quantization format** (see [04 Quantization](04-quantization.md)).
 
-**依据：可推导**
+**Basis: derivable**
 
-## 6.3 三种省显存的手段
+## 6.3 Three ways to save VRAM
 
-| 手段 | 原理 | 代价 | 适用 |
+| Technique | How it works | Cost | Applies to |
 |---|---|---|---|
-| **降低 KV 精度** | KV 从 BF16 降到 FP8 | 极小的质量损失 | 几乎所有场景，第一选择 |
-| **前缀缓存** | 复用相同前缀的 KV | 需要额外显存管理 | 多轮对话、固定 system prompt、RAG |
-| **外部卸载（LMCache 等）** | KV 存到 CPU 内存或磁盘 | 检索延迟 | 长会话、重复前缀 |
+| **Lower KV precision** | KV from BF16 down to FP8 | Minimal quality loss | Almost every scenario; the first choice |
+| **Prefix caching** | Reuses the KV of shared prefixes | Requires extra memory management | Multi-turn conversations, fixed system prompts, RAG |
+| **External offloading (LMCache etc.)** | Stores KV in CPU memory or on disk | Retrieval latency | Long sessions, repeated prefixes |
 
-### 前缀缓存
+### Prefix caching
 
-前缀缓存对下面这些场景收益极大：
+Prefix caching pays off enormously in these scenarios:
 
-- 多轮对话（历史消息是重复前缀）
-- RAG（检索到的文档片段在多轮间重复）
-- 固定 system prompt 的批量请求
+- Multi-turn conversations (conversation history is a repeated prefix)
+- RAG (retrieved document chunks repeat across turns)
+- Batched requests with a fixed system prompt
 
-**一个容易踩的坑**：混合架构模型（含线性注意力或 SSM 成分）的"缓存"不只是 KV，还有**递归状态**。这类模型的前缀缓存实现方式与纯 Transformer 不同，不能直接套用纯注意力模型的调优经验。判断方法：看模型配置里有没有类似 mamba / SSM / recurrent 的参数。
+**A pitfall that is easy to hit**: for hybrid-architecture models (those with linear attention or SSM components), the "cache" is not just the KV — there is also a **recurrent state**. Prefix caching for these models is implemented differently than for pure Transformers, so tuning experience from pure-attention models does not carry over. How to tell: check whether the model config has parameters like mamba / SSM / recurrent.
 
-框架通常提供保留策略参数。**很多情况下保持默认即可**——手动指定保留间隔反而会破坏框架已做好的边界对齐。
+Frameworks usually provide a retention-policy parameter. **In many cases the default is fine** — manually specifying retention intervals can actually break the boundary alignment the framework has already set up.
 
-### 外部卸载（LMCache）
+### External offloading (LMCache)
 
-把 KV 卸到 CPU RAM 或磁盘，用廉价容量换显存：
+Offload KV to CPU RAM or disk, trading cheap capacity for VRAM:
 
 ```bash
-# 概念示例，具体参数名以你所用版本为准
+# Conceptual example; the exact parameter name depends on your version
 -e CACHE_MODE=lmcache
 ```
 
-| 优点 | 缺点 |
+| Pros | Cons |
 |---|---|
-| 支持超长会话的持久恢复 | 每次命中要走一次 CPU/磁盘读取 |
-| 显存压力大幅下降 | 高并发下可能成为新瓶颈 |
+| Supports durable resumption of very long sessions | Every hit requires a CPU/disk read |
+| Dramatically reduces VRAM pressure | Under high concurrency it can become the new bottleneck |
 
-**注意**：视频/图像类请求通常不能复用文本前缀缓存，卸载策略对多模态请求的收益有限。
+**Note**: video/image requests usually cannot reuse text prefix caches, so offloading strategies offer limited benefit for multimodal requests.
 
-## 6.4 长上下文：DCP 值不值得用
+## 6.4 Long context: is DCP worth it
 
-DCP（解码上下文并行）把 KV 的序列维度切分到多张卡上，让单请求能使用超过单卡容量的上下文。
+DCP (decode context parallelism) splits the sequence dimension of the KV cache across multiple GPUs, letting a single request use more context than one GPU could hold.
 
-| 前提 | DCP 的表现 |
+| Prerequisite | How DCP fares |
 |---|---|
-| 卡间有 NVLink / 高速 RDMA | 可行，是长上下文的重要手段 |
-| **卡间只有 PCIe** | **收益有限**——ring 传递 KV 的通信开销可能抵消并行收益 |
-| 卡数少（2–4） | 并行度低，ring 圈数少，相对可行 |
-| 卡数多 | ring 圈数增加，通信量接近完整 KV，PCIe 上不划算 |
+| NVLink / high-speed RDMA between GPUs | Viable; an important tool for long context |
+| **PCIe only between GPUs** | **Limited benefit** — the communication of passing KV around the ring can cancel out the parallelism gains |
+| Few GPUs (2–4) | Low parallelism, few ring hops; relatively viable |
+| Many GPUs | Ring hops multiply and traffic approaches the full KV size; not worthwhile over PCIe |
 
-**实践建议**：
+**Practical recommendation**:
 
 ```
-需要更长上下文时，按这个顺序试：
-1. KV 降到 FP8                      ← 代价最低
-2. 缩短并发 / 减少并发槽位            ← 用并发换长度
-3. 加卡并用 TP/PP 扩展容量
-4. 最后才考虑 DCP                     ← PCIe 上收益最不确定
+When you need more context, try these in order:
+1. Drop KV to FP8                      ← lowest cost
+2. Shorten prompts / fewer concurrency slots  ← trade concurrency for length
+3. Add GPUs and extend capacity with TP/PP
+4. Only then consider DCP              ← least certain payoff over PCIe
 ```
 
-如果确实要用 DCP，注意它通常必须整除 TP 度，且不同并行度下的性能不能互相外推——**某一配置的测速结果不适用于另一配置**。
+If you do use DCP, note that it usually must divide the TP degree evenly, and performance at one parallelism degree cannot be extrapolated to another — **a measured throughput number for one configuration does not apply to another**.
 
-**依据：可推导 + 实测**（PCIe 上 DCP 通信成为瓶颈的现象见多方公开实践）
+**Basis: derivable + measured** (the phenomenon of DCP communication becoming the bottleneck over PCIe appears in multiple public write-ups)
 
-## 6.5 检查清单
+## 6.5 Checklist
 
-部署前逐条确认：
+Confirm each item before deploying:
 
-- [ ] 按 6.1 的公式算过目标上下文的 KV 需求
-- [ ] 确认 KV 精度的实际配置（BF16 / FP8 / FP8 混合）
-- [ ] `gpu-memory-utilization` 留了足够工作区
-- [ ] 如果模型含 SSM / 线性注意力成分，已确认前缀缓存是框架原生支持的路径
-- [ ] 长上下文场景评估过 DCP 的实际收益，而不是默认开启
-- [ ] 测过并发槽位数对显存的实际影响
+- [ ] Computed the KV requirement for your target context using the formula in 6.1
+- [ ] Confirmed the actual KV precision configuration (BF16 / FP8 / mixed FP8)
+- [ ] `gpu-memory-utilization` leaves enough workspace
+- [ ] If the model has SSM / linear-attention components, confirmed prefix caching is a natively supported path in the framework
+- [ ] Evaluated DCP's actual benefit for your long-context scenario rather than enabling it by default
+- [ ] Measured the actual impact of the concurrency slot count on VRAM
 
-## 6.6 测量模板
+## 6.6 Measurement template
 
 ```markdown
-### 配置
-- 模型 / 层数 / KV 头数 / head_dim：
-- KV 精度：
-- gpu-memory-utilization：
-- 并发槽位：
-- 前缀缓存 / 外部卸载：开启 / 关闭
+### Configuration
+- Model / layers / KV heads / head_dim:
+- KV precision:
+- gpu-memory-utilization:
+- Concurrency slots:
+- Prefix caching / external offloading: on / off
 
-### 容量
-| 配置 | 可用 KV token 数 | 最大可跑上下文 | 实测并发上限 |
+### Capacity
+| Configuration | Available KV tokens | Max runnable context | Measured concurrency limit |
 |---|---|---|---|
 
-### 前缀缓存效果
-| 场景 | 开启前 TTFT | 开启后 TTFT | 提升 |
+### Prefix caching effect
+| Scenario | TTFT before | TTFT after | Improvement |
 |---|---|---|---|
 ```
 
-框架启动日志通常**直接报告可用的 KV token 总数**，这是最省事的验证方式——先记下它，再对照 6.1 的公式。
+Framework startup logs usually **report the total number of available KV tokens directly** — this is the easiest verification there is. Note the number first, then cross-check it against the formula in 6.1.
 
-**依据：待测**
+**Basis: open**
 
 ---
 
-上一章：[05 推测解码](05-speculative.md) ｜ 返回 [README](../README.zh-CN.md)
+Previous chapter: [05 Speculative decoding](05-speculative.md) | Back to [README](../README.md)

@@ -1,34 +1,34 @@
-# 配方：4 × 96 GB，PCIe 互联
+# Recipe: 4 × 96 GB, PCIe interconnect
 
-适用硬件：4 张 96 GB 显存卡（RTX PRO 6000 Blackwell 类），无 NVLink，通过 PCIe 5.0 x16 互联。
+Target hardware: 4 cards with 96 GB of VRAM (RTX PRO 6000 Blackwell class), no NVLink, connected via PCIe 5.0 x16.
 
-## 适用边界
+## Applicability boundaries
 
-| 能用 | 不能用 |
+| Works | Does not work |
 |---|---|
-| 总显存 384 GB 的单机部署 | 需要跨节点扩展的场景 |
-| 中小规模 MoE（量化后） | 未量化的超大稠密模型 |
-| 上下文 32K–128K 的常规服务 | 需要 1M 上下文的超长场景（见 [06 KV 缓存](../docs/06-kv-cache.md)） |
+| Single-machine deployment with 384 GB total VRAM | Scenarios that require scaling across nodes |
+| Small-to-medium MoE (quantized) | Unquantized very large dense models |
+| Regular serving with 32K–128K context | Ultra-long scenarios requiring 1M context (see [06 KV Cache](../docs/06-kv-cache.md)) |
 
-## 拓扑前提
+## Topology prerequisites
 
-**先跑这一步，再决定参数：**
+**Run this first, then decide the parameters:**
 
 ```bash
 nvidia-smi topo -m
 ```
 
-判断规则（见 [02 并行策略](../docs/02-parallelism.md)）：
+Decision rules (see [02 Parallelism](../docs/02-parallelism.md)):
 
-| 观察结果 | TP 怎么设 |
+| Observation | How to set TP |
 |---|---|
-| 四张卡两两为 `PIX` / `PXB`，且同属一个 PCIe Switch 组 | TP=4 |
-| 四张卡分属两个 Switch | TP=2 × PP=2 |
-| 出现 `SYS`（跨 CPU Socket） | 按 Switch 边界切，不要让 TP 跨过去 |
+| All four cards pairwise `PIX` / `PXB`, all within one PCIe Switch group | TP=4 |
+| Four cards split across two Switches | TP=2 × PP=2 |
+| Any `SYS` (cross-CPU-socket) | Split at Switch boundaries; do not let TP cross them |
 
-## 启动配置
+## Launch configuration
 
-### 情况 A：四卡同组（TP=4）
+### Case A: all four cards in the same group (TP=4)
 
 ```bash
 vllm serve <your-model> \
@@ -44,17 +44,17 @@ vllm serve <your-model> \
   --host 0.0.0.0 --port 8000
 ```
 
-| 参数 | 为什么这么设 |
+| Parameter | Why it is set this way |
 |---|---|
-| `--tensor-parallel-size 4` | 用满四卡，全在快链路上 |
-| `--gpu-memory-utilization 0.90` | 留出工作区；**不要一上手就 0.95**，突发峰值容易失败 |
-| `--max-model-len 32768` | 保守起点，先跑通再按 6.1 的公式往上调 |
-| `--max-num-seqs 32` | 中等并发起点 |
-| `--kv-cache-dtype fp8` | 代价最低的显存节省手段 |
-| `--enable-prefix-caching` | 有重复前缀时收益显著 |
-| `--enable-chunked-prefill` | 长 prompt 时不阻塞解码 |
+| `--tensor-parallel-size 4` | Use all four cards, all on the fast links |
+| `--gpu-memory-utilization 0.90` | Leave headroom for workspace; **do not jump straight to 0.95** — burst peaks can fail |
+| `--max-model-len 32768` | Conservative starting point; get it running first, then scale up using the formula in 6.1 |
+| `--max-num-seqs 32` | Moderate-concurrency starting point |
+| `--kv-cache-dtype fp8` | The cheapest VRAM-saving lever |
+| `--enable-prefix-caching` | Significant benefit when prefixes repeat |
+| `--enable-chunked-prefill` | Keeps long prompts from blocking decoding |
 
-### 情况 B：分属两个 Switch（TP=2 × PP=2）
+### Case B: split across two Switches (TP=2 × PP=2)
 
 ```bash
 vllm serve <your-model> \
@@ -69,19 +69,19 @@ vllm serve <your-model> \
   --host 0.0.0.0 --port 8000
 ```
 
-不需要额外参数——让 PP 承担跨 Switch 的通信，它只在层边界传激活值，代价远小于 TP 的逐层 all-reduce。
+No extra parameters needed — let PP carry the cross-Switch communication. It only passes activations at layer boundaries, at far lower cost than TP's per-layer all-reduce.
 
-## 已知限制与待验证项
+## Known limitations and open questions
 
-| 项 | 状态 |
+| Item | Status |
 |---|---|
-| 上述参数是结构合理的起点 | **可推导** |
-| 本配方在你的具体硬件上的最优值 | **待测** |
-| 是否需要调整 NCCL 环境变量 | **待测**（见 [03 通信优化](../docs/03-communication.md)） |
-| 推测解码能否带来收益 | **待测**（从 draft=3 开始，见 [05 推测解码](../docs/05-speculative.md)） |
+| The parameters above are a structurally sound starting point | **Derivable** |
+| Optimal values of this recipe on your specific hardware | **Open** |
+| Whether NCCL environment variables need tuning | **Open** (see [03 Communication](../docs/03-communication.md)) |
+| Whether speculative decoding brings a benefit | **Open** (start with draft=3, see [05 Speculative Decoding](../docs/05-speculative.md)) |
 
-**特别注意**：如果你的卡是低功耗版本（Max-Q 类，约 300 W），功耗墙可能先于显存成为瓶颈。请在你的测量记录里标明功耗上限与散热条件。
+**Special note**: if your cards are the low-power versions (Max-Q class, ~300 W), the power limit may become the bottleneck before VRAM does. Please note the power limit and cooling conditions in your measurement record.
 
-## 测完之后
+## After you measure
 
-请按 [METHODOLOGY.md](../benchmarks/METHODOLOGY.md) 记录，并把结果提交到 [benchmarks/](../benchmarks/)。配方库的价值来自真实数据，不是猜测。
+Please record following [METHODOLOGY.md](../benchmarks/METHODOLOGY.md) and submit your results to [benchmarks/](../benchmarks/). The value of the recipe library comes from real data, not guesswork.

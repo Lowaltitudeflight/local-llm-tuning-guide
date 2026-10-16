@@ -1,120 +1,120 @@
-# 05 推测解码
+# 05 Speculative Decoding
 
-> 推测解码常被当成"免费的加速"。在 PCIe 多卡机器上它不是免费的，而且**猜得越多，可能越慢**。
+> Speculative decoding is often treated as "free speedup". On multi-GPU PCIe machines it is not free, and **the more you guess, the slower it can get**.
 
-## 5.1 原理与代价
+## 5.1 How it works and what it costs
 
-推测解码的基本流程：
+The basic flow of speculative decoding:
 
-1. 用一个小而快的**草稿（draft）**组件连续猜出 k 个 token
-2. 用**目标（target）**模型一次前向并行验证这 k 个 token
-3. 接受最长正确前缀，从第一个错误处重新开始
+1. A small, fast **draft** component guesses k tokens in a row
+2. The **target** model verifies all k tokens in parallel with a single forward pass
+3. Accept the longest correct prefix and restart from the first mistake
 
-关键在于：**一次前向验证 k 个 token，比串行跑 k 次前向便宜得多**（decode 阶段是显存带宽受限的，批处理几乎不增加时间）。
+The key insight: **verifying k tokens in one forward pass is far cheaper than running k forward passes serially** (decode is memory-bandwidth-bound, and batching barely adds any time).
 
-但这个便宜是有条件的：
+But that cheapness comes with conditions:
 
-| 代价来源 | 说明 |
+| Cost source | Explanation |
 |---|---|
-| 草稿成本 | 草稿模型本身要占显存、要计算 |
-| 验证浪费 | 猜错的部分等于白算 |
-| **通信开销** | 多卡下草稿与验证结果都要跨卡同步 |
-| **显存挤占** | 草稿占用的显存会减少可用于 KV 缓存的空间 |
+| Draft cost | The draft model itself takes VRAM and compute |
+| Wasted verification | Whatever was guessed wrong is pure wasted compute |
+| **Communication overhead** | On multiple GPUs, both draft and verification results must be synchronized across cards |
+| **VRAM squeeze** | VRAM taken by the draft reduces what is left for the KV cache |
 
-前两项是所有场景共有的；后两项在多卡 PCIe 场景下会被放大。
+The first two apply in every scenario; the last two are amplified in the multi-GPU PCIe setting.
 
-**依据：可推导**
+**Basis: derivable**
 
-## 5.2 主要方案对比
+## 5.2 Comparing the main approaches
 
-| 方案 | 草稿来源 | 额外显存 | 特点 |
+| Approach | Draft source | Extra VRAM | Characteristics |
 |---|---|---|---|
-| **MTP** | 模型自带的预测头 | 极小 | 无需额外模型，训练时已内建 |
-| **DFlash / DFlash2** | 独立草稿模型 | 较大 | 草稿能力更强，但需额外下载与显存 |
-| **EAGLE 系** | 独立小模型 | 中等 | 通用，生态成熟 |
-| **Medusa** | 多个预测头 | 小 | 与 MTP 思路相近 |
+| **MTP** | The model's own prediction heads | Minimal | No extra model needed; built in at training time |
+| **DFlash / DFlash2** | A separate draft model | Significant | Stronger drafting, but requires an extra download and VRAM |
+| **EAGLE family** | A separate small model | Moderate | General-purpose, mature ecosystem |
+| **Medusa** | Multiple prediction heads | Small | Similar in spirit to MTP |
 
-**核心区别**：MTP 类的草稿"长在模型自己身上"，边际成本几乎为零；DFlash 类需要挂一个独立模型，边际成本包括显存、带宽和一次额外的加载。
+**The core difference**: MTP-style drafts "grow on the model itself", so their marginal cost is nearly zero; DFlash-style approaches attach a separate model, and the marginal cost includes VRAM, bandwidth, and one extra load.
 
-**依据：可推导**
+**Basis: derivable**
 
-## 5.3 反直觉的实测：draft 更长 ≠ 更快
+## 5.3 The counterintuitive measurement: longer drafts ≠ faster
 
-公开实测（4× RTX PRO 6000 **Max-Q**，无 NVLink，TP4，DCP1，NVFP4 量化 MoE 模型 GLM-5.3-Flash，4096 token prefill 预算，32 并发槽位，FP8 KV 缓存，temperature 1 / top-p 0.95，每格 5 个预热后的 30 秒窗口）：
+Published measurements (4x RTX PRO 6000 **Max-Q**, no NVLink, TP4, DCP1, NVFP4-quantized MoE model GLM-5.3-Flash, 4096-token prefill budget, 32 concurrent slots, FP8 KV cache, temperature 1 / top-p 0.95, five warmed-up 30-second windows per cell):
 
-| 模式 | draft token 数 | C1 单并发 | C8 聚合 | 32K prefill |
+| Mode | Draft tokens | C1 single-concurrency | C8 aggregate | 32K prefill |
 |---|---|---|---|---|
 | MTP3 | 3 | **281.3 tok/s** | **897.6 tok/s** | 13,816 tok/s |
 | DFlash2 K7 | 7 | 229.0 tok/s | 702.6 tok/s | 13,955 tok/s |
 
-**draft 从 3 增加到 7，单并发输出反而下降 18.6%，聚合下降 21.7%。**
+**Going from a draft of 3 to a draft of 7 dropped single-concurrency output by 18.6% and aggregate throughput by 21.7%.**
 
-同时，验证器速率也印证了这一点：MTP3 为 112.14 steps/s，DFlash2 为 87.56 steps/s。
+The verifier rate tells the same story: 112.14 steps/s for MTP3 versus 87.56 steps/s for DFlash2.
 
-而 **prefill 两者几乎相同**（13,816 vs 13,955，差 1%）——这符合预期，推测解码只作用于解码阶段。
+Meanwhile, **prefill was nearly identical between the two** (13,816 vs 13,955, a 1% difference) — exactly as expected, since speculative decoding only affects the decode phase.
 
-**为什么**：
+**Why**:
 
-1. **DFlash2 挂了一个独立的草稿模型**，额外的显存占用挤占了 KV 缓存空间，额外的权重访问挤占了本就稀缺的显存带宽
-2. **一次猜 7 个，验证失败时的浪费更大**——接受率不变的情况下，更长的 draft 意味着更多被丢弃的计算
-3. **在无 NVLink 的机器上**，草稿与验证的跨卡同步要和主模型的 all-reduce 争抢同一条 PCIe 链路
+1. **DFlash2 attaches a separate draft model**; the extra VRAM footprint squeezes the KV cache, and the extra weight reads compete for the already-scarce memory bandwidth
+2. **Guessing 7 at a time wastes more when verification fails** — at a fixed acceptance rate, a longer draft means more discarded compute
+3. **On machines without NVLink**, the cross-GPU synchronization of draft and verification competes with the main model's all-reduce for the same PCIe link
 
-> ⚠️ **数据波动提示**：该来源自己声明，另做的一组五次 C1 检查测得 MTP3 为 265.7–277.0 tok/s、DFlash2 为 212.9–225.2 tok/s。也就是说这些数字存在约 ±5% 的启动间波动，**不要用它做精细的版本比较**。DFlash2 的低值（212.9）甚至低于其上一版本保存的 219.7。
+> ⚠️ **Note on run-to-run variance**: the source itself reports that a separate set of five C1 checks measured 265.7–277.0 tok/s for MTP3 and 212.9–225.2 tok/s for DFlash2. In other words, these numbers carry roughly ±5% of run-to-run variance; **do not use them for fine-grained version comparisons**. DFlash2's low value (212.9) even falls below the 219.7 recorded for its previous version.
 
-**依据：实测**（来源：local-inference-lab/rtx6kpro，GLM-5.3-Flash 模型页）
+**Basis: measured** (source: local-inference-lab/rtx6kpro, the GLM-5.3-Flash model page)
 
-## 5.4 怎么选 draft 长度
+## 5.4 How to choose the draft length
 
-| 情况 | 建议 |
+| Situation | Recommendation |
 |---|---|
-| 首次配置 | **从 2–3 开始**，先测出接受率 |
-| 接受率高（>0.7）、带宽充裕 | 可以往上试到 5–7 |
-| 无 NVLink、多卡 TP | 保持 3 左右，加长收益容易被吃掉 |
-| 草稿需要独立模型 | 先算显存余量，再决定是否值得 |
-| 单卡或 NVLink 集群 | 可以更激进 |
+| First-time setup | **Start at 2–3** and measure the acceptance rate first |
+| High acceptance rate (>0.7) with bandwidth to spare | You can try up to 5–7 |
+| No NVLink, multi-GPU TP | Stay around 3; the gains from lengthening get eaten easily |
+| Draft requires a separate model | Work out the VRAM headroom first, then decide if it's worth it |
+| Single GPU or NVLink cluster | You can be more aggressive |
 
-**判断方法**：模型的启动日志通常会报告接受率（acceptance rate）。如果接受率低而 draft 很长，那基本是在做无用功。
+**How to judge**: the model's startup log usually reports the acceptance rate. If the acceptance rate is low while the draft is long, you are mostly doing wasted work.
 
-## 5.5 一个实用的取舍顺序
+## 5.5 A practical order of trade-offs
 
-想提速时，按这个顺序尝试，代价从低到高：
+When you want more speed, try these in order, from cheapest to most expensive:
 
 ```
-1. 确认基线：关闭推测解码测一次（--mode off 之类）
-2. 开 MTP 类（模型自带的），draft = 3
-3. 调 draft 长度：2 / 3 / 5 各测一轮
-4. 还想更快 → 先看是不是 KV 缓存/量化可以优化（见 04、06 章）
-5. 最后才考虑挂独立草稿模型（DFlash / EAGLE）
+1. Confirm the baseline: measure once with speculative decoding off (--mode off or similar)
+2. Enable MTP-style (built into the model) with draft = 3
+3. Tune the draft length: measure 2 / 3 / 5 in separate rounds
+4. Still want more → first check whether the KV cache / quantization can be improved (see chapters 04 and 06)
+5. Only then consider attaching a separate draft model (DFlash / EAGLE)
 ```
 
-第 4 步容易被跳过。**很多"加草稿模型"的收益，其实不如把 KV 精度或并行配置调对。**
+Step 4 is the one people skip. **Many of the gains people chase by adding a draft model are actually smaller than what you get from getting KV precision or the parallel configuration right.**
 
-## 5.6 测量模板
+## 5.6 Measurement template
 
 ```markdown
-### 配置
-- 目标模型 / 量化：
-- 并行配置（TP/PP/DCP）：
-- 草稿方案（MTP / DFlash / EAGLE）：
-- draft token 数：
-- 客户端命令：
+### Configuration
+- Target model / quantization:
+- Parallel configuration (TP/PP/DCP):
+- Draft scheme (MTP / DFlash / EAGLE):
+- Draft token count:
+- Client command:
 
-### 结果
-| draft 长度 | 接受率 | C1 输出 | C8 聚合 | 32K prefill |
+### Results
+| Draft length | Acceptance rate | C1 output | C8 aggregate | 32K prefill |
 |---|---|---|---|---|
-| 0（基线） | — |  |  |  |
+| 0 (baseline) | — |  |  |  |
 | 2 |  |  |  |  |
 | 3 |  |  |  |  |
 | 5 |  |  |  |  |
 
-### 注意事项
-- 预热窗口数：
-- 每次测量时长：
-- 启动间重复次数（建议 ≥3）：
+### Notes
+- Number of warm-up windows:
+- Duration of each measurement:
+- Number of run-to-run repetitions (recommend ≥3):
 ```
 
-**依据：待测**
+**Basis: open**
 
 ---
 
-上一章：[04 量化选型](04-quantization.md) ｜ 下一章：[06 KV 缓存](06-kv-cache.md)
+Previous chapter: [04 Quantization](04-quantization.md) | Next chapter: [06 KV cache](06-kv-cache.md)

@@ -1,0 +1,113 @@
+name: Benchmark report
+description: Submit a reproducible measurement from your machine. Positive AND negative results are both welcome — 负面结果同样欢迎.
+title: "[benchmark] <GPU model> x <count> / <model name>"
+labels: ["benchmark"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for contributing data. Please follow [benchmarks/METHODOLOGY.md](../blob/main/benchmarks/METHODOLOGY.md) — **a number without conditions cannot be accepted**.
+
+        感谢提交数据。请遵循 [benchmarks/METHODOLOGY.md](../blob/main/benchmarks/METHODOLOGY.md) 的测量纪律——**没有条件的数字无法被收录**。负面结果("TP=8 吞吐只有 TP=2 的 60%")同样有价值。
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware / 硬件
+      description: GPU model × count, power limit (nvidia-smi -q -d POWER), clock policy, interconnect topology summary, CPU / NUMA layout, system RAM
+      placeholder: |
+        - GPU: 8 × RTX PRO 6000 (96 GB)
+        - Power limit: 600 W (default)
+        - Clock policy: auto
+        - Topology summary (nvidia-smi topo -m):
+        - CPU / NUMA: 2 × Xeon, GPUs split across sockets
+        - System RAM: 512 GB
+    validations:
+      required: true
+
+  - type: textarea
+    id: software
+    attributes:
+      label: Software versions / 软件版本
+      description: Driver, CUDA, NCCL, inference framework + version, exact container image tag or digest, model weight revision, quantisation tool & config
+      placeholder: |
+        - Driver: 570.xx
+        - CUDA: 12.8
+        - NCCL: 2.21
+        - Framework: vLLM 0.8.x
+        - Image: vllm/vllm-openai:v0.8.x (digest sha256:...)
+        - Model revision: main@<commit>
+        - Quantisation: AWQ, llm-compressor 0.5.x
+    validations:
+      required: true
+
+  - type: textarea
+    id: server-command
+    attributes:
+      label: Server command / 服务端命令
+      description: The **verbatim** launch command, not "something like this". Include all relevant environment variables.
+      placeholder: |
+        vllm serve Qwen/... \
+          --tensor-parallel-size 4 ...
+        export NCCL_...
+    validations:
+      required: true
+
+  - type: textarea
+    id: client-command
+    attributes:
+      label: Client command / 客户端命令
+      description: The verbatim benchmark/bench command, with the tool name and version.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workload
+    attributes:
+      label: Workload / 工作负载
+      description: Concurrency (C1 / C8 recommended), input length, output length, sampling parameters
+      placeholder: |
+        - Concurrency: C1 / C8
+        - Input length: 4096 tokens
+        - Output length: 512 tokens
+        - Sampling: temperature 1.0, top-p 0.95
+    validations:
+      required: true
+
+  - type: textarea
+    id: results
+    attributes:
+      label: Results / 结果
+      description: One row per configuration. **Report single-request and aggregate throughput separately.**
+      placeholder: |
+        | Config | C1 output (tok/s) | C8 aggregate (tok/s) | Notes |
+        |---|---|---|---|
+        | TP=4 | 281.3 | 897.6 | |
+        | TP=2 x PP=2 | | | |
+    validations:
+      required: true
+
+  - type: textarea
+    id: measurement-details
+    attributes:
+      label: Measurement details / 测量细节
+      description: Warm-up windows discarded, window length, number of independent cold starts, observed variance
+      placeholder: |
+        - Warm-up: first 2 windows discarded
+        - Window: 30 s
+        - Independent cold starts: 5
+        - Observed variance: 265.7–277.0 tok/s (±5%)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: discipline
+    attributes:
+      label: Measurement discipline / 测量纪律
+      options:
+        - label: At least 3 independent cold starts, and I reported the variance (not just the best run) / 至少 3 次独立启动,并报告了波动范围
+          required: true
+        - label: I changed one variable at a time between rows / 每次只改一个变量
+          required: true
+        - label: I agree to publish this data under the MIT license / 同意以 MIT 协议发布这些数据
+          required: true

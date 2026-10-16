@@ -29,6 +29,8 @@ Usage
     python tools/planner.py --gpus RTX4090 --count 4 --params 7 --quant fp16
     python tools/planner.py --gpus H800 --count 8 --model qwen2.5-72b \
         --ctx 32768 --goal throughput --json
+    python tools/planner.py --gpus RTXPRO5000-64 --count 8 --model qwen2.5-32b \
+        --benchmarks benchmarks/data
     python tools/planner.py --list-gpus
 
 Standard library only. No dependencies, no network.
@@ -134,6 +136,26 @@ GPU_SPECS: Dict[str, Dict[str, object]] = {
         "note": "PCIe Gen4 x16; peer-to-peer access is restricted by the driver",
         "grade": MEASURED,
         "source": "public multi-GPU scaling catalogue (0.75x per-GPU efficiency)",
+    },
+    "RTXPRO5000-64": {
+        "vram_gb": 64, "link": "pcie", "link_bw_gbs": 128,
+        "scaling": 0.78, "consumer": False,
+        "note": "RTX PRO 5000 Blackwell, 64 GB GDDR7, PCIe 5.0 x16 "
+                "(~128 GB/s bidirectional). Max-Q SKUs run a ~300 W power "
+                "limit and may hit the power wall before the VRAM wall.",
+        "grade": DERIVABLE,
+        "source": "NVIDIA product specifications; per-GPU scaling estimated "
+                  "from the pcie5 class",
+    },
+    "RTXPRO6000-96": {
+        "vram_gb": 96, "link": "pcie", "link_bw_gbs": 128,
+        "scaling": 0.78, "consumer": False,
+        "note": "RTX PRO 6000 Blackwell, 96 GB GDDR7, PCIe 5.0 x16 "
+                "(~128 GB/s bidirectional). Max-Q SKUs run a ~300 W power "
+                "limit and may hit the power wall before the VRAM wall.",
+        "grade": DERIVABLE,
+        "source": "NVIDIA product specifications; per-GPU scaling estimated "
+                  "from the pcie5 class",
     },
 }
 
@@ -253,6 +275,7 @@ class Plan:
     conclusions: List[Conclusion] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     memory: Optional[Dict[str, float]] = None
+    benchmarks: Optional[List[Dict[str, object]]] = None
 
     def as_dict(self) -> Dict[str, object]:
         return {
@@ -273,6 +296,7 @@ class Plan:
             "memory_gb": self.memory,
             "conclusions": [c.as_dict() for c in self.conclusions],
             "warnings": self.warnings,
+            "measured_data": [e for e in (self.benchmarks or [])],
         }
 
 
@@ -400,6 +424,8 @@ def plan(args: argparse.Namespace) -> Plan:
         params_b=params_b, quant=quant, ctx=args.ctx, goal=args.goal,
         utilization=args.util, seqs=seqs, kv_dtype=kv_dtype,
     )
+    if getattr(args, "benchmarks", None):
+        p.benchmarks = load_benchmarks(args.benchmarks)
 
     # --- memory budget -----------------------------------------------------
     usable_per_gpu = vram * args.util - FRAMEWORK_OVERHEAD_GB
@@ -576,6 +602,73 @@ def guess_params(model: str) -> Optional[float]:
     return float(arch["params"]) if arch else None
 
 
+# --------------------------------------------------------------------------
+# Measured benchmark data (benchmarks/data/*.json)
+# --------------------------------------------------------------------------
+
+BENCHMARK_SCHEMA = "lltg.benchmark.v1"
+
+
+def load_benchmarks(path: str) -> List[Dict[str, object]]:
+    """Load benchmark entries from a JSON file or a directory of them.
+
+    Refuses anything that does not carry the expected schema tag. Silently
+    parsing a foreign file would put unvetted numbers next to the plan,
+    which is the one thing this project must not do.
+    """
+    import glob
+    import os
+
+    if os.path.isdir(path):
+        files = sorted(glob.glob(os.path.join(path, "*.json")))
+        if not files:
+            raise SystemExit(f"no *.json files found in '{path}'")
+    else:
+        files = [path]
+
+    entries: List[Dict[str, object]] = []
+    for f in files:
+        with open(f, encoding="utf-8") as fh:
+            try:
+                data = json.load(fh)
+            except json.JSONDecodeError as exc:
+                raise SystemExit(f"{f}: not valid JSON ({exc})") from exc
+        if not isinstance(data, dict) or data.get("schema") != BENCHMARK_SCHEMA:
+            raise SystemExit(
+                f"{f}: expected schema '{BENCHMARK_SCHEMA}', got "
+                f"'{data.get('schema') if isinstance(data, dict) else type(data).__name__}'. "
+                f"See benchmarks/data/SCHEMA.md."
+            )
+        data["_file"] = os.path.basename(f)
+        entries.append(data)
+    return entries
+
+
+def render_benchmarks(entries: List[Dict[str, object]]) -> str:
+    out: List[str] = ["MEASURED DATA (loaded via --benchmarks)", ""]
+    for e in entries:
+        hw = e.get("hardware", {})
+        model = e.get("model", {})
+        src = e.get("source", {})
+        out.append(f"  [{e.get('kind', '?')}] {e.get('title', e.get('id', '?'))}")
+        out.append(f"      hardware : {hw.get('gpus', '?')} - {hw.get('interconnect', '?')}")
+        model_line = f"      model    : {model.get('name', '?')}"
+        if model.get("quantization"):
+            model_line += f", {model.get('quantization')}"
+        out.append(model_line)
+        if e.get("transferable"):
+            out.append(f"      transfers: {e['transferable']}")
+        if src.get("project"):
+            out.append(f"      source   : {src['project']}")
+        out.append(f"      file     : {e.get('_file')}")
+        out.append("")
+    out.append(
+        "These entries describe THEIR test conditions. They anchor the plan "
+        "above; they do not replace a measurement on your machine."
+    )
+    return "\n".join(out)
+
+
 def valid_tp_values(heads: Optional[float], kv_heads: Optional[float],
                     count: int, ceiling: int) -> List[int]:
     """Tensor-parallel sizes the engine will actually accept.
@@ -725,6 +818,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="measured KV bytes per token; overrides the built-in table")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     ap.add_argument("--list-gpus", action="store_true", help="print the hardware table and exit")
+    ap.add_argument("--benchmarks", default=None,
+                    help="path to a benchmark JSON file or a directory of them "
+                         "(e.g. benchmarks/data); loaded entries are attached "
+                         "to the plan as measured data")
+    ap.add_argument("--list-benchmarks", action="store_true",
+                    help="with --benchmarks: list the entries and exit")
     return ap
 
 
@@ -738,8 +837,25 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not 0.5 <= args.util <= 0.98:
         raise SystemExit("--util must be between 0.50 and 0.98")
 
+    benchmarks: Optional[List[Dict[str, object]]] = None
+    if args.list_benchmarks:
+        if not args.benchmarks:
+            raise SystemExit("--list-benchmarks requires --benchmarks <path>")
+        benchmarks = load_benchmarks(args.benchmarks)
+        for e in benchmarks:
+            hw = e.get("hardware", {})
+            print(f"[{e.get('kind', '?')}] {e.get('id', '?')}  "
+                  f"({hw.get('gpus', '?')})  {e.get('title', '')}")
+        return 0
+
     p = plan(args)
-    print(json.dumps(p.as_dict(), indent=2, ensure_ascii=False) if args.json else render_text(p))
+    if args.json:
+        print(json.dumps(p.as_dict(), indent=2, ensure_ascii=False))
+    else:
+        print(render_text(p))
+        if benchmarks:
+            print()
+            print(render_benchmarks(benchmarks))
     return 0
 
 

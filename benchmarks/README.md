@@ -1,64 +1,75 @@
-# 实测数据
+# Benchmark Data
 
-本目录存放可复现的性能数据。**所有条目必须遵循 [METHODOLOGY.md](METHODOLOGY.md) 的测量纪律。**
+This directory holds reproducible performance data. **Every entry must follow the measurement discipline in [METHODOLOGY.md](METHODOLOGY.md).**
 
-## 本项目的实测数据
+## Machine-readable data
 
-*待填。欢迎提交你机器上的测量结果——**空白比编造的数字有用得多**。*
+External reference data and community submissions are stored as structured JSON in [`data/`](data/) (format described in [data/SCHEMA.md](data/SCHEMA.md)). Tables are for humans, JSON is for tools:
 
-| 硬件 | 模型 | 配置 | C1 输出 | C8 聚合 | 提交者 | 链接 |
+```bash
+python tools/planner.py --gpus RTX4090-24 --count 4 --params 35 --quant awq \
+    --benchmarks benchmarks/data
+```
+
+The planner feeds existing measured data directly into its planning output.
+
+## First-party measurements from this project
+
+*To be filled. Contributions of measurements from your own machines are welcome — **an empty cell is far more useful than a made-up number**.*
+
+| Hardware | Model | Configuration | C1 output | C8 aggregate | Submitter | Link |
 |---|---|---|---|---|---|---|
 | — | — | — | — | — | — | — |
 
-## 外部参考数据
+## External reference data
 
-以下是**公开可查的第三方测量**，列在这里是为了给参数选择提供锚点。**注意它们是特定条件下的结果，不可直接外推。**
+Below are **publicly verifiable third-party measurements**, listed here to anchor parameter choices. **Note that they are results under specific conditions and cannot be extrapolated directly.**
 
-### 1. 推测解码：draft 长度增加反而变慢
+### 1. Speculative decoding: longer draft lengths get slower
 
-| 项 | 条件 |
+| Item | Condition |
 |---|---|
-| 硬件 | 4 × RTX PRO 6000 **Max-Q**（约 300 W 低功耗版），无 NVLink |
-| 互联 | PCIe，TP4 / DCP1 |
-| 模型 | GLM-5.3-Flash，NVFP4 量化 MoE |
-| 服务配置 | 4096 token prefill 预算，32 并发槽位，FP8 KV 缓存，GPU-only 前缀缓存 |
-| 采样 | temperature 1 / top-p 0.95 |
-| 测量 | 每格 5 个预热后的 30 秒窗口；C8 为聚合值 |
+| Hardware | 4 × RTX PRO 6000 **Max-Q** (~300 W low-power variant), no NVLink |
+| Interconnect | PCIe, TP4 / DCP1 |
+| Model | GLM-5.3-Flash, NVFP4-quantized MoE |
+| Serving configuration | 4096-token prefill budget, 32 concurrent slots, FP8 KV cache, GPU-only prefix caching |
+| Sampling | temperature 1 / top-p 0.95 |
+| Measurement | 5 warmed-up 30-second windows per cell; C8 is the aggregate value |
 
-| 模式 | draft token | C1 输出 | C8 聚合 | 32K prefill | 验证器速率 |
+| Mode | Draft tokens | C1 output | C8 aggregate | 32K prefill | Verifier rate |
 |---|---|---|---|---|---|
 | MTP3 | 3 | **281.3 tok/s** | **897.6 tok/s** | 13,816 tok/s | 112.14 steps/s |
 | DFlash2 K7 | 7 | 229.0 tok/s | 702.6 tok/s | 13,955 tok/s | 87.56 steps/s |
 
-**来源**：Local Inference Lab，`local-inference-lab/rtx6kpro`，GLM-5.3-Flash 模型页。
+**Source**: Local Inference Lab, `local-inference-lab/rtx6kpro`, GLM-5.3-Flash model page.
 
-**该来源自行声明的波动范围**：另做的一组五次 C1 检查测得 MTP3 为 265.7–277.0 tok/s、DFlash2 为 212.9–225.2 tok/s。即约 **±5% 的启动间波动**。
+**Run-to-run variance self-reported by that source**: a separate set of five C1 checks measured MTP3 at 265.7–277.0 tok/s and DFlash2 at 212.9–225.2 tok/s. That is roughly **±5% variance between launches**.
 
-**可迁移的结论**：在同一硬件上，draft 从 3 加到 7 并未带来收益。**不可迁移的部分**：具体数字，以及"3 一定优于 7"这个判断——它依赖该模型、该量化方案和该硬件的组合。
+**Transferable conclusion**: on the same hardware, growing the draft from 3 to 7 brought no benefit. **What is not transferable**: the specific numbers, and the judgment that "3 is definitely better than 7" — that depends on the combination of this model, this quantization scheme, and this hardware.
 
-### 2. 无 NVLink 下副本优于张量并行
+### 2. Without NVLink, replicas beat tensor parallelism
 
-| 项 | 条件 |
+| Item | Condition |
 |---|---|
-| 硬件 | 4 × RTX 3090，无 NVLink |
-| 模型 | AWQ 量化的 Qwen3.6-35B-A3B |
-| 框架 | vLLM 0.21.0 |
-| 工作负载 | 8192 token 上下文，128 并发 |
+| Hardware | 4 × RTX 3090, no NVLink |
+| Model | AWQ-quantized Qwen3.6-35B-A3B |
+| Framework | vLLM 0.21.0 |
+| Workload | 8192-token context, 128 concurrent requests |
 
-| 配置 | 聚合吞吐 |
+| Configuration | Aggregate throughput |
 |---|---|
-| 双实例，各 TP=2 | **1437 tok/s** |
-| 单实例，TP=4 | 610 tok/s |
+| Two instances, TP=2 each | **1437 tok/s** |
+| Single instance, TP=4 | 610 tok/s |
 
-**来源**：vllm-topology-bench，经第三方技术资料汇总。
+**Source**: vllm-topology-bench, aggregated via third-party technical write-ups.
 
-**可迁移的结论**：模型能放进较少卡时，独立副本优于把卡做大并行。**不可迁移的部分**：具体数字（消费级卡、单次测量、特定模型）。
+**Transferable conclusion**: when the model fits on fewer cards, independent replicas beat scaling up tensor parallelism. **What is not transferable**: the specific numbers (consumer cards, single measurement, specific model).
 
-## 提交数据
+## Submitting data
 
-见 [CONTRIBUTING.md](../CONTRIBUTING.md)。提交时请：
+See [CONTRIBUTING.md](../CONTRIBUTING.md). When submitting, please:
 
-1. 使用 [METHODOLOGY.md](METHODOLOGY.md) 中的模板
-2. 附上完整的服务端与客户端命令
-3. **包含波动范围**，不要只给最好的一次
-4. 负面结果同样欢迎
+1. Use the template from [METHODOLOGY.md](METHODOLOGY.md)
+2. Include the complete server-side and client-side commands
+3. **Include the variance range**, not just your best run
+4. Negative results are equally welcome

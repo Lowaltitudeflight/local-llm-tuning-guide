@@ -37,14 +37,14 @@
 
 | 章节 | 内容 | 一句话 |
 |---|---|---|
-| [01 硬件与拓扑](docs/01-hardware.md) | PCIe 与 NVLink 的真实差距 | 先搞清楚你的卡怎么连的 |
-| [02 并行策略](docs/02-parallelism.md) | TP / PP / DP / EP / DCP 怎么选 | 加卡什么时候反而更慢 |
-| [03 通信优化](docs/03-communication.md) | all-reduce 模式与 NCCL 调优 | PCIe 上为什么该换 one-shot |
-| [04 量化选型](docs/04-quantization.md) | FP8 / MXFP8 / NVFP4 / AWQ 的取舍 | 省显存的代价在哪里 |
-| [05 推测解码](docs/05-speculative.md) | MTP / DFlash / EAGLE 系 | 猜得越多为什么反而越慢 |
-| [06 KV 缓存](docs/06-kv-cache.md) | 显存预算、前缀缓存、长上下文 | 上下文是怎么吃掉显存的 |
-| [配置配方](recipes/) | 按硬件型号的现成配置 | 拿来即用 |
-| [实测数据](benchmarks/) | 数据表与测量方法 | 你自己也能填表 |
+| [01 硬件与拓扑](docs/zh-CN/01-hardware.md) | PCIe 与 NVLink 的真实差距 | 先搞清楚你的卡怎么连的 |
+| [02 并行策略](docs/zh-CN/02-parallelism.md) | TP / PP / DP / EP / DCP 怎么选 | 加卡什么时候反而更慢 |
+| [03 通信优化](docs/zh-CN/03-communication.md) | all-reduce 模式与 NCCL 调优 | PCIe 上为什么该换 one-shot |
+| [04 量化选型](docs/zh-CN/04-quantization.md) | FP8 / MXFP8 / NVFP4 / AWQ 的取舍 | 省显存的代价在哪里 |
+| [05 推测解码](docs/zh-CN/05-speculative.md) | MTP / DFlash / EAGLE 系 | 猜得越多为什么反而越慢 |
+| [06 KV 缓存](docs/zh-CN/06-kv-cache.md) | 显存预算、前缀缓存、长上下文 | 上下文是怎么吃掉显存的 |
+| [配置配方](recipes/zh-CN/) | 按硬件型号的现成配置 | 拿来即用 |
+| [实测数据](benchmarks/zh-CN/README.md) | 数据表与测量方法 | 你自己也能填表 |
 | [规划工具](tools/) | 输入硬件 → 输出并行策略 | 命令行 + 离线网页 |
 
 ## 数据可信度分级
@@ -72,7 +72,7 @@
 
 ## 怎么用这个项目
 
-**如果你要部署一台新机器**：从 [01 硬件与拓扑](docs/01-hardware.md) 开始，先跑一次 `nvidia-smi topo -m`，再去 [配置配方](recipes/) 找最接近你硬件的配置。
+**如果你要部署一台新机器**：从 [01 硬件与拓扑](docs/zh-CN/01-hardware.md) 开始，先跑一次 `nvidia-smi topo -m`，再去 [配置配方](recipes/zh-CN/) 找最接近你硬件的配置。
 
 **如果你已经有机器但吞吐不理想**：跑一下规划工具，对比它给出的参数和你现在的差异。
 
@@ -82,7 +82,7 @@ python tools/planner.py --gpus A800-80 --count 8 --model qwen2.5-72b --ctx 8192
 
 它会输出互联带宽上限、显存预算、以及 TP / PP / 副本数的推荐组合，每一条都标注依据等级。详见 [tools/README.md](tools/README.md)。
 
-**如果你想贡献数据**：见 [CONTRIBUTING.md](CONTRIBUTING.md)。数据表格已经做好，缺的就是真实机器的测量值。
+**如果你想贡献数据**：见 [CONTRIBUTING.md](CONTRIBUTING.zh-CN.md)。数据表格已经做好，缺的就是真实机器的测量值。
 
 ## 相关项目
 

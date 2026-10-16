@@ -10,6 +10,10 @@ Two front ends over the same set of decisions.
 Both answer the same three questions — interconnect, memory, strategy — and
 both refuse to invent numbers. They differ only in how you reach them.
 
+The "no network" claim of `config-generator.html` is enforced, not assumed:
+`tests/test_offline_html.py` fails the build the moment an external resource
+reference creeps in.
+
 ## planner.py
 
 ```bash
@@ -26,6 +30,13 @@ python tools/planner.py --gpus L40S-48 --count 4 --params 70 \
 
 # machine-readable output for scripting
 python tools/planner.py --gpus H800-80 --count 8 --model qwen2.5-72b --json
+
+# attach the measured data from benchmarks/data to the output
+python tools/planner.py --gpus RTXPRO5000-64 --count 8 --model qwen2.5-32b \
+    --benchmarks benchmarks/data
+
+# just list what the benchmark directory holds
+python tools/planner.py --benchmarks benchmarks/data --list-benchmarks
 
 # hardware table and built-in models
 python tools/planner.py --list-gpus

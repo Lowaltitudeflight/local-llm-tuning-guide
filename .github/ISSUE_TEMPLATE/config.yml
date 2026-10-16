@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Measurement methodology (METHODOLOGY.md)
+    url: https://github.com/Lowaltitudeflight/local-llm-tuning-guide/blob/main/benchmarks/METHODOLOGY.md
+    about: Read this before submitting benchmark data — numbers without conditions cannot be accepted.

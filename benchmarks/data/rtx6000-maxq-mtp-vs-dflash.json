@@ -1,0 +1,73 @@
+{
+  "schema": "lltg.benchmark.v1",
+  "id": "rtx6000-maxq-mtp-vs-dflash",
+  "kind": "external-reference",
+  "title": "Speculative decoding over PCIe: MTP3 (draft 3) vs DFlash2 (draft 7) — longer drafts did not help",
+  "date": null,
+  "hardware": {
+    "gpus": "4 x RTX PRO 6000 Max-Q",
+    "vram_gb_per_gpu": 96,
+    "power_limit": "~300 W (Max-Q, low-power SKU)",
+    "interconnect": "PCIe, TP4 / DCP1 (no NVLink)",
+    "topology_summary": null,
+    "cpu_numa": null
+  },
+  "software": {
+    "driver": null,
+    "cuda": null,
+    "nccl": null,
+    "framework": null,
+    "framework_version": null,
+    "image": null
+  },
+  "model": {
+    "name": "GLM-5.3-Flash",
+    "quantization": "NVFP4 (MoE)",
+    "revision": null
+  },
+  "workload": {
+    "concurrency": [1, 8],
+    "input_tokens": 4096,
+    "output_tokens": null,
+    "sampling": "temperature 1.0, top-p 0.95",
+    "server_notes": "4096-token prefill budget, 32 concurrent slots, FP8 KV cache, GPU-only prefix cache"
+  },
+  "results": [
+    {
+      "config": "MTP3",
+      "draft_tokens": 3,
+      "metrics": {
+        "output_c1_toks": 281.3,
+        "aggregate_c8_toks": 897.6,
+        "prefill_32k_toks": 13816,
+        "verifier_steps_s": 112.14
+      }
+    },
+    {
+      "config": "DFlash2 K7",
+      "draft_tokens": 7,
+      "metrics": {
+        "output_c1_toks": 229.0,
+        "aggregate_c8_toks": 702.6,
+        "prefill_32k_toks": 13955,
+        "verifier_steps_s": 87.56
+      }
+    }
+  ],
+  "variance": {
+    "note": "five independent cold-start C1 checks; ~±5% between starts",
+    "output_c1_toks": {
+      "MTP3": [265.7, 277.0],
+      "DFlash2 K7": [212.9, 225.2]
+    }
+  },
+  "methodology": "per cell: 5 warmed-up 30-second windows; C8 is the aggregate",
+  "source": {
+    "project": "Local Inference Lab (local-inference-lab/rtx6kpro, GLM-5.3-Flash model page)",
+    "url": null
+  },
+  "transferable": "On this hardware, raising the draft from 3 to 7 tokens brought no gain — speculative decoding is bandwidth-bound over PCIe. Start at draft 2-3 and measure.",
+  "not_transferable": "The concrete numbers, and '3 beats 7' as a general rule — they depend on this model, this quantisation and this hardware combination.",
+  "submitted_by": null,
+  "notes": null
+}

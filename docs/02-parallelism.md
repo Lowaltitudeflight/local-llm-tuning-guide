@@ -1,121 +1,121 @@
-# 02 并行策略
+# 02 Parallelism
 
-> 加卡不一定变快。这一章讲清楚什么时候会变慢，以及怎么绕开。
+> Adding GPUs does not necessarily make things faster. This chapter explains when it makes things slower, and how to route around it.
 
-## 2.1 五种并行方式各自切什么
+## 2.1 What each of the five parallelism schemes splits
 
-| 方式 | 切分维度 | 通信模式 | 通信量 |
+| Scheme | Split dimension | Communication pattern | Traffic |
 |---|---|---|---|
-| **TP** 张量并行 | 每层的权重矩阵 | 每层一次 all-reduce | **最大**，每层都有 |
-| **PP** 流水线并行 | 按层分段 | 层边界传激活值 | 小 |
-| **DP** 数据并行 | 完整副本，各跑各的 | 推理时**零通信** | 无 |
-| **EP** 专家并行 | MoE 的专家分散 | all-to-all | 中到高 |
-| **DCP** 解码上下文并行 | KV 的序列维度 | ring 传递 KV 块 | 随并行度上升 |
+| **TP** tensor parallelism | Each layer's weight matrices | One all-reduce per layer | **Largest**, occurs every layer |
+| **PP** pipeline parallelism | Layers split into stages | Activations passed at stage boundaries | Small |
+| **DP** data parallelism | Full replicas, each serving independently | **Zero communication** at inference time | None |
+| **EP** expert parallelism | MoE experts spread across GPUs | all-to-all | Medium to high |
+| **DCP** decode context parallelism | The sequence dimension of the KV cache | KV blocks passed around a ring | Grows with parallelism degree |
 
-关键区分：**TP 的通信发生在每一层内部**，而 PP 只在段的边界。层数越深，TP 的累计通信代价越大。
+The key distinction: **TP's communication happens inside every layer**, while PP only communicates at stage boundaries. The deeper the model, the more TP's cumulative communication cost adds up.
 
-**依据：可推导**
+**Basis: derivable**
 
-## 2.2 第一原则：能塞进单卡，就别切
+## 2.2 First principle: if it fits on one GPU, don't split it
 
-如果模型（含目标上下文的 KV 缓存）能放进一张卡，那么**多开几个独立副本**几乎总是比张量并行快：
+If the model (including the KV cache for your target context length) fits on a single GPU, **running several independent replicas** is almost always faster than tensor parallelism:
 
-- 副本之间没有任何通信
-- 吞吐随副本数线性增长
-- 一个副本挂了，其他还在服务
+- No communication between replicas at all
+- Throughput scales linearly with the number of replicas
+- If one replica goes down, the others keep serving
 
-**实测参考**（4× RTX 3090，无 NVLink，AWQ 量化的 Qwen3.6-35B-A3B，vLLM 0.21.0，8K 上下文，128 并发）：
+**Measured reference** (4x RTX 3090, no NVLink, AWQ-quantized Qwen3.6-35B-A3B, vLLM 0.21.0, 8K context, 128 concurrent requests):
 
-| 配置 | 聚合吞吐 |
+| Configuration | Aggregate throughput |
 |---|---|
-| 双实例，各 TP=2 | **1437 tok/s** |
-| 单实例，TP=4 | 610 tok/s |
+| Two instances, each TP=2 | **1437 tok/s** |
+| Single instance, TP=4 | 610 tok/s |
 
-同一批硬件、同一个模型，**2.4 倍差距**。
+Same hardware, same model, a **2.4x gap**.
 
-> ⚠️ 这是单一条件下的单次测量（消费级卡、8K 上下文、特定模型）。方向性结论可迁移——"副本优于跨卡切分"——但具体数字不适用于其他硬件或模型。
+> ⚠️ This is a single measurement under a single set of conditions (consumer GPUs, 8K context, one specific model). The directional conclusion — "replicas beat splitting across GPUs" — transfers, but the specific numbers do not apply to other hardware or models.
 
-**依据：实测**（来源：vllm-topology-bench，经第三方技术博客汇总）
+**Basis: measured** (source: vllm-topology-bench, as compiled by third-party technical blogs)
 
-## 2.3 第二原则：TP 的边界是 PCIe Switch
+## 2.3 Second principle: TP's boundary is the PCIe Switch
 
-模型放不进单卡时，必须切。此时：
+When the model does not fit on one GPU, you have to split it. Then:
 
 ```
-能否放进同一 PCIe Switch 下的卡数?
-├─ 能  → TP = 该 Switch 下的卡数
-└─ 不能 → 用 TP × PP 组合，让 TP 留在 Switch 内部，PP 跨越 Switch
+Does it fit within the GPUs under one PCIe Switch?
+├─ Yes  → TP = number of GPUs under that switch
+└─ No   → use a TP × PP combination: keep TP inside the switch, let PP cross switches
 ```
 
-**为什么**：每个 TP 步骤都要 all-reduce。如果这一步跨越了 `SYS` 边界（见 [01 硬件与拓扑](01-hardware.md)），它就要走 CPU 间互连，延迟骤增。
+**Why**: every TP step performs an all-reduce. If that step crosses a `SYS` boundary (see [01 Hardware & Topology](01-hardware.md)), it has to traverse the inter-CPU interconnect and latency spikes.
 
-从 01 章那个示例拓扑（GPU0/1/2 在 `PIX`，GPU3 是 `SYS`）出发：
+Starting from the example topology in chapter 01 (GPU0/1/2 at `PIX`, GPU3 at `SYS`):
 
-| 配置 | 评价 |
+| Configuration | Verdict |
 |---|---|
-| TP=4 | ❌ 每一步 all-reduce 都撞上最慢链路 |
-| TP=3 | ✅ 全部留在 Switch 内 |
-| TP=2 × PP=2 | ✅ TP 留在快链路，PP 只有在段边界传激活 |
-| 两个 TP=2 副本 | ✅ 前提是模型能放进 2 卡 |
+| TP=4 | ❌ Every all-reduce step hits the slowest link |
+| TP=3 | ✅ Stays entirely within the switch |
+| TP=2 × PP=2 | ✅ TP stays on the fast links; PP only passes activations at stage boundaries |
+| Two TP=2 replicas | ✅ Provided the model fits on 2 GPUs |
 
-## 2.4 什么时候"加卡反而变慢"
+## 2.4 When "adding GPUs makes it slower"
 
-出现下面任一情况，说明并行度已经过头：
+If any of the following holds, your parallelism has overshot:
 
-- **TP 跨度超过了 PCIe Switch / NUMA 域** —— 收益被通信吃掉
-- **模型本来就能放单卡** —— 加卡引入了本不存在的通信
-- **并发数很低** —— 通信开销无法被批处理摊薄，单请求延迟反而变高
-- **MoE 模型硬用 TP 切专家** —— 应该用 EP
+- **TP spans more than a PCIe Switch / NUMA domain** — the gains get eaten by communication
+- **The model fit on a single GPU to begin with** — adding GPUs introduces communication that never needed to exist
+- **Very low concurrency** — communication overhead cannot be amortized across batches, and per-request latency actually rises
+- **Forcing TP onto an MoE model's experts** — use EP instead
 
-诊断顺序：先看 `nvidia-smi topo -m`，再看并发数，最后才怀疑框架。
+Diagnostic order: check `nvidia-smi topo -m` first, then the concurrency level, and only then suspect the framework.
 
-## 2.5 MoE 模型：优先考虑 EP
+## 2.5 MoE models: prefer EP
 
-MoE 的专家权重占大头。用 TP 切会让每个专家都被切开、每层都 all-reduce；用 EP 则是让不同卡持有不同专家，只在路由时 all-to-all 一次。
+In MoE models the expert weights dominate. Splitting with TP slices every expert apart and forces an all-reduce every layer; with EP, different GPUs hold different experts and the only communication is a single all-to-all at routing time.
 
-经验规则：
+Rules of thumb:
 
-| 场景 | 建议 |
+| Situation | Recommendation |
 |---|---|
-| 专家总数能被卡数整除 | EP 往往是更优解 |
-| 专家数不能被卡数整除 | EP 会产生负载不均，回退到 TP |
-| 单卡就能放下全部专家 | 直接多副本，别切 |
+| Total expert count divisible by the GPU count | EP is often the better answer |
+| Expert count not divisible by the GPU count | EP creates load imbalance; fall back to TP |
+| All experts fit on a single GPU | Just run replicas, don't split |
 
-**依据：可推导**（框架实现细节请对照你所用 vLLM / SGLang 版本的文档）
+**Basis: derivable** (for framework implementation details, check the documentation of your specific vLLM / SGLang version)
 
-## 2.6 决策流程
+## 2.6 Decision flow
 
 ```
-1. 模型 + KV 能放进单卡?
-   → 是：开 N 个副本（DP），结束
-   → 否：继续
+1. Do the model + KV cache fit on one GPU?
+   → Yes: run N replicas (DP), done
+   → No: continue
 
-2. 算一下需要几张卡
-   → 参考 06 章的显存预算公式
+2. Work out how many GPUs you need
+   → See the VRAM budget formula in chapter 06
 
-3. 这些卡在同一个 PCIe Switch 下吗?
-   → 是：TP = 卡数
-   → 否：TP = Switch 内的卡数，其余用 PP 补
+3. Are these GPUs under the same PCIe Switch?
+   → Yes: TP = GPU count
+   → No: TP = GPUs within the switch, fill the rest with PP
 
-4. 是 MoE 模型吗?
-   → 是：评估 EP 是否可行（专家数能否整除）
-   → 否：结束
+4. Is it an MoE model?
+   → Yes: evaluate whether EP is feasible (does the expert count divide evenly?)
+   → No: done
 
-5. 实测验证
-   → 用 benchmarks/ 的模板记录，对比 2-3 个候选配置
+5. Verify by measurement
+   → Record with the templates in benchmarks/ and compare 2-3 candidate configurations
 ```
 
-## 2.7 参数速查
+## 2.7 Flag quick reference
 
-| 框架 | TP | PP | DP | EP |
+| Framework | TP | PP | DP | EP |
 |---|---|---|---|---|
 | vLLM | `--tensor-parallel-size` | `--pipeline-parallel-size` | `--data-parallel-size` | `--enable-expert-parallel` |
-| 默认值 | 1 | 1 | 1 | 关闭 |
+| Default | 1 | 1 | 1 | off |
 
-> 各框架版本间参数名与默认值会变化，使用前请对照你所用版本的官方文档。
+> Flag names and defaults change between framework versions; always check the official documentation for the version you are running.
 
-**依据：待测**（欢迎提交你机器上不同并行配置的实测对比）
+**Basis: open** (measured comparisons of different parallel configurations on your machine are welcome — please submit them)
 
 ---
 
-上一章：[01 硬件与拓扑](01-hardware.md) ｜ 下一章：[03 通信优化](03-communication.md)
+Previous chapter: [01 Hardware & Topology](01-hardware.md) | Next chapter: [03 Communication](03-communication.md)

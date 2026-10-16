@@ -1,5 +1,8 @@
 **English** ｜ [简体中文](README.zh-CN.md)
 
+[![CI](https://github.com/Lowaltitudeflight/local-llm-tuning-guide/actions/workflows/ci.yml/badge.svg)](https://github.com/Lowaltitudeflight/local-llm-tuning-guide/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 # Local LLM Tuning Guide
 
 **A decision library for multi-GPU deployments without NVLink.**
@@ -45,7 +48,11 @@ Six highest-frequency questions, answered first.
 | [06 KV cache](docs/06-kv-cache.md) | Memory budget, prefix cache, long context | How context eats your VRAM |
 | [Recipes](recipes/) | Ready-to-use configs by hardware | Copy and run |
 | [Benchmarks](benchmarks/) | Data tables and measurement method | Fill the table with your own machine |
-| [Planner](tools/) | Hardware in, parallel strategy out | CLI + offline web tool |
+| [Planner](tools/) | Hardware in, parallel strategy out | [CLI + offline web tool](tools/) · [try the web tool online](https://lowaltitudeflight.github.io/local-llm-tuning-guide/) |
+
+Every chapter is also available in [简体中文](docs/zh-CN/) — as are the
+[recipes](recipes/zh-CN/), the [benchmark pages](benchmarks/zh-CN/), and
+[CONTRIBUTING](CONTRIBUTING.zh-CN.md).
 
 ## Evidence grading
 

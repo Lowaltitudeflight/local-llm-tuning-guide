@@ -1,77 +1,77 @@
-# 贡献指南
+# Contributing Guide
 
-## 最欢迎的两类贡献
+## The two most welcome kinds of contributions
 
-### 1. 可复现的实测数据
+### 1. Reproducible measured data
 
-这是本项目最有价值的贡献。请严格遵循 [benchmarks/METHODOLOGY.md](benchmarks/METHODOLOGY.md)。
+This is the most valuable contribution to this project. Please follow [benchmarks/METHODOLOGY.md](benchmarks/METHODOLOGY.md) strictly.
 
-提交时请确认：
+Before submitting, please confirm:
 
-- [ ] 完整的服务端与客户端命令（原样，不是"类似"）
-- [ ] 硬件、时钟、功耗上限
-- [ ] 驱动 / CUDA / NCCL / 框架 / 镜像 tag 的精确版本
-- [ ] 至少 3 次独立启动的重复测量，并给出波动范围
-- [ ] 输入输出长度与采样参数
+- [ ] Complete server-side and client-side commands (verbatim, not "something like this")
+- [ ] Hardware, clocks, power limit
+- [ ] Exact versions of driver / CUDA / NCCL / framework / image tag
+- [ ] At least 3 independent-launch repetitions, with the variance range
+- [ ] Input/output lengths and sampling parameters
 
-**负面结果同样欢迎。**"我在 8 卡 4090 上试了 TP=8，吞吐只有 TP=2 的 60%"——这类数据能帮别人省下几天试错，价值不低于一个漂亮的加速比。
+**Negative results are equally welcome.** "I tried TP=8 on eight 4090s and throughput was only 60% of TP=2" — data like that saves others days of trial and error, and is worth no less than a pretty speedup number.
 
-### 2. 修正错误
+### 2. Correcting errors
 
-发现某个结论不成立、某个数字被误读、某条建议在特定硬件上有反例——请开 issue，并附上你的证据。
+If you find a conclusion that does not hold, a number that was misread, or a recommendation with a counterexample on specific hardware — please open an issue with your evidence attached.
 
-**本项目愿意被推翻。** 前提是给出可复现的证据。
+**This project is willing to be proven wrong.** The precondition is reproducible evidence.
 
-## 内容规范
+## Content standards
 
-### 结论必须带依据标记
+### Conclusions must carry a basis tag
 
-| 标记 | 什么时候用 |
+| Tag | When to use |
 |---|---|
-| **实测** | 有公开可查的测量，且写明了条件与来源 |
-| **可推导** | 由硬件规格或框架机制直接推出，不依赖具体测量 |
-| **待测** | 方向明确但缺数据 |
+| **Measured** | There is a publicly verifiable measurement, with conditions and source stated |
+| **Derivable** | Derived directly from hardware specs or framework mechanics, independent of any specific measurement |
+| **Open** | The direction is clear but data is lacking |
 
-### 不给没有依据的数字
+### No numbers without a basis
 
-这是硬规则。宁可留空，不要编造。**一个空的单元格比一个假数字有价值得多。**
+This is a hard rule. Leave it blank rather than making it up. **An empty cell is far more valuable than a fake number.**
 
-### 引用要标注来源
+### Citations must name their source
 
-引用他人数据时写清楚：
+When citing someone else's data, state clearly:
 
-- 来源项目 / 仓库
-- 原始测量条件（硬件、软件、负载）
-- **哪些结论可迁移、哪些不可迁移**
+- Source project / repository
+- The original measurement conditions (hardware, software, workload)
+- **Which conclusions transfer and which do not**
 
-### 术语约定
+### Terminology conventions
 
-- 首次出现的缩写要展开全称
-- 命令、环境变量、路径、日志原文不翻译
-- 具体参数名保持原样（如 `--tensor-parallel-size`）
+- Expand abbreviations on first use
+- Commands, environment variables, paths, and log excerpts are not translated
+- Keep specific parameter names as-is (e.g. `--tensor-parallel-size`)
 
-### 措辞
+### Wording
 
-- 写判断，不写模棱两可的话
-- 承认不确定的地方，并说明不确定在哪
-- 不用"众所周知""显然"这类词
+- Write judgments, not hedged ambiguity
+- Acknowledge uncertainty, and say where the uncertainty lies
+- Avoid words like "as everyone knows" and "obviously"
 
-## 提交流程
+## Submission process
 
-1. Fork 本仓库
-2. 新建分支：`data/<硬件>-<日期>` 或 `fix/<主题>`
-3. 提交，commit message 说明改了什么、依据是什么
-4. 发起 Pull Request，描述里附上测量条件
+1. Fork this repository
+2. Create a branch: `data/<hardware>-<date>` or `fix/<topic>`
+3. Commit, with a commit message explaining what changed and on what basis
+4. Open a Pull Request, with the measurement conditions in the description
 
-## 关于配方（recipes/）
+## About recipes (recipes/)
 
-配方是**结构化的起点**，不是验证过的最优解。补充配方时请：
+Recipes are **structured starting points**, not validated optima. When adding a recipe, please:
 
-- 写明适用边界（什么情况不能用）
-- 写明拓扑前提
-- 每个参数附一句理由
-- 明确列出"已知限制"和"待验证项"
+- State the applicability boundaries (when it must not be used)
+- State the topology prerequisites
+- Give a one-line rationale for every parameter
+- Explicitly list "known limitations" and "open questions"
 
-## 许可
+## License
 
-贡献的内容将以 [MIT](LICENSE) 协议发布。
+Contributed content will be published under the [MIT](LICENSE) license.

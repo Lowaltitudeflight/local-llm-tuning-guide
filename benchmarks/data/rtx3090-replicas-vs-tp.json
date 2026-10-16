@@ -1,0 +1,61 @@
+{
+  "schema": "lltg.benchmark.v1",
+  "id": "rtx3090-replicas-vs-tp",
+  "kind": "external-reference",
+  "title": "Replicas beat tensor parallelism when the model fits: 2x TP=2 (1437 tok/s) vs 1x TP=4 (610 tok/s)",
+  "date": null,
+  "hardware": {
+    "gpus": "4 x RTX 3090",
+    "vram_gb_per_gpu": 24,
+    "power_limit": null,
+    "interconnect": "PCIe Gen4 x16 (no NVLink; consumer driver restricts P2P)",
+    "topology_summary": null,
+    "cpu_numa": null
+  },
+  "software": {
+    "driver": null,
+    "cuda": null,
+    "nccl": null,
+    "framework": "vLLM",
+    "framework_version": "0.21.0",
+    "image": null
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B (MoE)",
+    "quantization": "AWQ",
+    "revision": null
+  },
+  "workload": {
+    "concurrency": [128],
+    "input_tokens": 8192,
+    "output_tokens": null,
+    "sampling": null,
+    "server_notes": null
+  },
+  "results": [
+    {
+      "config": "2 instances, each TP=2",
+      "metrics": {
+        "aggregate_toks": 1437
+      }
+    },
+    {
+      "config": "1 instance, TP=4",
+      "metrics": {
+        "aggregate_toks": 610
+      }
+    }
+  ],
+  "variance": {
+    "note": "single measurement, reported by the source without variance"
+  },
+  "methodology": "8192-token context, 128 concurrent requests; single run as published",
+  "source": {
+    "project": "vllm-topology-bench, via third-party technical write-ups",
+    "url": null
+  },
+  "transferable": "When the model fits on fewer GPUs, independent replicas outperform a wider tensor-parallel group on consumer PCIe hardware.",
+  "not_transferable": "The concrete numbers (consumer cards, single run, specific model). The margin between 1437 and 610 should not be read as a universal 2.4x.",
+  "submitted_by": null,
+  "notes": null
+}

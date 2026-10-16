@@ -1,34 +1,34 @@
-# 配方：8 × 24 GB，PCIe 互联
+# Recipe: 8 × 24 GB, PCIe interconnect
 
-适用硬件：8 张 24 GB 显存的消费级卡（RTX 4090 / 3090 类），无 NVLink。
+Target hardware: 8 consumer cards with 24 GB of VRAM (RTX 4090 / 3090 class), no NVLink.
 
-## 这一类的特殊之处
+## What makes this class special
 
-消费级 Ada 及之后的显卡，**GPU 间 P2P 访问在驱动层被限制**。后果是：
+On consumer Ada and later GPUs, **inter-GPU P2P access is restricted at the driver level**. The consequences:
 
-- NCCL 无法在卡之间直接传输数据，只能**绕道主机内存**（GPU → CPU → GPU）
-- 每一次 all-reduce 都要走两趟 PCIe，延迟和带宽双重劣化
-- **TP 在这类硬件上效率极低**，加卡带来的收益远小于预期
+- NCCL cannot transfer data directly between cards; it can only **route through host memory** (GPU → CPU → GPU)
+- Every all-reduce crosses PCIe twice, degrading both latency and bandwidth
+- **TP is extremely inefficient on this class of hardware**, and the benefit of adding cards falls far short of expectations
 
-所以这类机器的配置策略与数据中心卡完全不同：**能不做 TP 就不做。**
+So the configuration strategy for these machines is completely different from datacenter cards: **if you can avoid TP, avoid it.**
 
-## 拓扑前提
+## Topology prerequisites
 
 ```bash
 nvidia-smi topo -m
 ```
 
-在这类硬件上，卡对之间通常显示 `PHB` 或 `SYS`，且 P2P 行会显示为不可用。这是正常现象，不是故障。
+On this class of hardware, card pairs usually show `PHB` or `SYS`, and the P2P row shows as unavailable. This is normal, not a fault.
 
-## 启动配置
+## Launch configuration
 
-### 首选：多副本（前提是模型能放进单卡或双卡）
+### First choice: multiple replicas (provided the model fits on one or two cards)
 
 ```bash
-# 每个副本用一个端口、一组卡，各自独立服务
-# 副本之间零通信，吞吐近似线性叠加
+# Each replica gets one port and one set of cards, serving independently
+# Zero communication between replicas; throughput adds up roughly linearly
 
-# 副本 1
+# Replica 1
 CUDA_VISIBLE_DEVICES=0,1 vllm serve <your-model> \
   --tensor-parallel-size 2 \
   --gpu-memory-utilization 0.90 \
@@ -37,7 +37,7 @@ CUDA_VISIBLE_DEVICES=0,1 vllm serve <your-model> \
   --kv-cache-dtype fp8 \
   --port 8001
 
-# 副本 2
+# Replica 2
 CUDA_VISIBLE_DEVICES=2,3 vllm serve <your-model> \
   --tensor-parallel-size 2 \
   --gpu-memory-utilization 0.90 \
@@ -47,9 +47,9 @@ CUDA_VISIBLE_DEVICES=2,3 vllm serve <your-model> \
   --port 8002
 ```
 
-前面挂一层负载均衡即可。**这是这类硬件上性价比最高的方案**——参考 [02 并行策略](../docs/02-parallelism.md) 中的实测对比（4×RTX 3090：双实例 TP=2 达 1437 tok/s，单实例 TP=4 仅 610 tok/s）。
+Put a load balancer in front. **This is the best price/performance option on this class of hardware** — see the measured comparison in [02 Parallelism](../docs/02-parallelism.md) (4×RTX 3090: two instances at TP=2 reached 1437 tok/s, a single instance at TP=4 only 610 tok/s).
 
-### 次选：必须切分时，TP 尽量小
+### Second choice: if you must shard, keep TP as small as possible
 
 ```bash
 vllm serve <your-model> \
@@ -63,32 +63,32 @@ vllm serve <your-model> \
   --host 0.0.0.0 --port 8000
 ```
 
-| 参数 | 说明 |
+| Parameter | Rationale |
 |---|---|
-| `--tensor-parallel-size 2` | 不超过 2；再大通信代价压过收益 |
-| `--pipeline-parallel-size 2` | 用 PP 扩展容量；通信只在段边界 |
-| `--gpu-memory-utilization 0.90` | 消费卡的显存碎片更多，别压太满 |
-| `--max-model-len 8192` | 24 GB 卡的 KV 空间有限，从短上下文起步 |
+| `--tensor-parallel-size 2` | Do not exceed 2; beyond that, communication cost outweighs the benefit |
+| `--pipeline-parallel-size 2` | Use PP to extend capacity; communication only happens at segment boundaries |
+| `--gpu-memory-utilization 0.90` | Consumer cards fragment VRAM more; do not fill it too tightly |
+| `--max-model-len 8192` | KV space on a 24 GB card is limited; start with short contexts |
 
-### 避免
+### Avoid
 
-| 配置 | 原因 |
+| Configuration | Reason |
 |---|---|
-| `--tensor-parallel-size 8` | 8 卡全 P2P 绕道 CPU，几乎必然是负收益 |
-| 高 `--max-num-seqs` + 长上下文 | 24 GB 卡上容易 OOM |
-| 期望 8 卡线性加速 | 这类硬件上不成立 |
+| `--tensor-parallel-size 8` | All 8 cards route P2P through the CPU, almost certainly a net loss |
+| High `--max-num-seqs` + long context | OOMs easily on 24 GB cards |
+| Expecting linear speedup from 8 cards | Does not hold on this class of hardware |
 
-## 已知限制与待验证项
+## Known limitations and open questions
 
-| 项 | 状态 |
+| Item | Status |
 |---|---|
-| P2P 受限导致 TP 低效 | **可推导**（驱动限制 + 公开实测佐证） |
-| 多副本优于 TP | **实测**（4×RTX 3090 的公开对比数据） |
-| 你的具体卡型是否有 P2P | **待测**（跑 `nvidia-smi topo -m` 确认） |
-| 8 卡的具体最优副本数 | **待测**（取决于模型大小与显存） |
+| P2P restrictions make TP inefficient | **Derivable** (driver restriction + public measurements as supporting evidence) |
+| Multiple replicas beat TP | **Measured** (public comparison data on 4×RTX 3090) |
+| Whether your specific card model has P2P | **Open** (confirm by running `nvidia-smi topo -m`) |
+| The concrete optimal replica count for 8 cards | **Open** (depends on model size and VRAM) |
 
-**一个务实的提醒**：如果模型小到能放进单卡，就不要用多卡。24 GB 卡跑 30B 以下的量化模型完全够用，此时 8 张卡的最佳用法是**8 个独立副本**，而不是一个巨大的并行实例。
+**One pragmatic reminder**: if the model is small enough to fit on a single card, do not use multiple cards. A 24 GB card handles quantized models below 30B just fine; in that case the best use of 8 cards is **8 independent replicas**, not one giant parallel instance.
 
-## 测完之后
+## After you measure
 
-请按 [METHODOLOGY.md](../benchmarks/METHODOLOGY.md) 记录并提交结果。
+Please record and submit your results following [METHODOLOGY.md](../benchmarks/METHODOLOGY.md).

@@ -1,0 +1,41 @@
+name: Wrong conclusion / counter-example
+description: Report a conclusion that does not hold, a misread number, or a counter-example on specific hardware — with reproducible evidence.
+title: "[correction] <which conclusion, one line>"
+labels: ["correction"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This project is willing to be overturned** — provided the evidence is reproducible. 本项目愿意被推翻,前提是给出可复现的证据。
+
+  - type: textarea
+    id: which-claim
+    attributes:
+      label: Which conclusion? / 哪条结论
+      description: File path and the claim, quoted or linked.
+      placeholder: "docs/02-parallelism.md — 'replicas beat TP when the model fits on one GPU'"
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence / 证据
+      description: Your measurement (following benchmarks/METHODOLOGY.md), or a public source with its conditions. State clearly which parts transfer and which do not.
+    validations:
+      required: true
+
+  - type: textarea
+    id: conditions
+    attributes:
+      label: Your conditions / 你的条件
+      description: Hardware, topology, software versions, commands — same checklist as the benchmark report.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: license
+    attributes:
+      options:
+        - label: I agree to publish this correction under the MIT license / 同意以 MIT 协议发布
+          required: true

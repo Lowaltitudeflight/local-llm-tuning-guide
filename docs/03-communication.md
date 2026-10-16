@@ -1,102 +1,102 @@
-# 03 通信优化
+# 03 Communication
 
-> TP 的通信是每一层都要发生的。这一章讲怎么让它在 PCIe 上少花时间。
+> TP's communication happens at every layer. This chapter is about spending as little time on it over PCIe as possible.
 
-## 3.1 两种 all-reduce 与它们的适用条件
+## 3.1 Two kinds of all-reduce and when each applies
 
-两阶段式（常称 two-shot）把 all-reduce 拆成 reduce-scatter 加 all-gather 两步：
+The two-stage variant (commonly called two-shot) splits the all-reduce into a reduce-scatter followed by an all-gather:
 
-| | 两阶段（reduce-scatter + all-gather） | 单步（one-shot） |
+| | Two-stage (reduce-scatter + all-gather) | One-shot |
 |---|---|---|
-| 通信总量 | 与 rank 数近似无关 | 随 rank 数线性上升 |
-| 同步次数 | 两次 | 一次 |
-| 优势场景 | **大消息**、带宽受限 | **小消息**、延迟受限 |
-| PCIe 上 | 消息大时仍然可用 | 解码阶段通常更优 |
+| Total traffic | Roughly independent of the rank count | Rises linearly with the rank count |
+| Synchronization rounds | Two | One |
+| Best case | **Large messages**, bandwidth-bound | **Small messages**, latency-bound |
+| On PCIe | Still viable for large messages | Usually better during decode |
 
-这条取舍的核心是**延迟还是带宽在主导**：
+The heart of this trade-off is **whether latency or bandwidth dominates**:
 
-- **Prefill 阶段**：一次处理几千个 token，all-reduce 的消息很大 → 带宽主导 → 两阶段仍有价值
-- **Decode 阶段**：每步只处理很少的 token，消息很小但同步极频繁 → 延迟主导 → 单步更优
+- **Prefill**: thousands of tokens processed at once, so all-reduce messages are large → bandwidth-bound → two-stage still pays off
+- **Decode**: very few tokens per step, so messages are small but synchronization is extremely frequent → latency-bound → one-shot wins
 
-所以正确的问法不是"哪个算法更好"，而是"我这个阶段的消息有多大"。
+So the right question is not "which algorithm is better" but "how large are the messages in this phase".
 
-**依据：可推导**
+**Basis: derivable**
 
-## 3.2 真实项目的做法
+## 3.2 What real projects do
 
-公开的 PCIe 优化实践（Local Inference Lab 的 GLM-5.3-Flash 配置）中有两点值得参考：
+Two points from public PCIe optimization practice (Local Inference Lab's GLM-5.3-Flash configuration) are worth studying:
 
-1. **默认关闭两阶段 all-reduce** —— 其配置文档明确写着 "Two-shot all-reduce is off"，目标配置走单步路径。
-2. **提供了按消息大小切换的阈值** —— 配置项里存在 `VLLM_PCIE_TWOSHOT_ALLREDUCE_MAX_SIZE` 这类参数，说明这个选择不是全局一刀切，而是随消息规模变化的。
+1. **Two-stage all-reduce disabled by default** — its configuration documentation states explicitly that "Two-shot all-reduce is off"; the target configuration takes the one-shot path.
+2. **A message-size threshold for switching modes** — its configuration exposes a parameter like `VLLM_PCIE_TWOSHOT_ALLREDUCE_MAX_SIZE`, which shows this is not a one-size-fits-all choice but one that changes with message size.
 
-第 2 点比第 1 点更有启发：**结论不是一个算法，而是一个阈值。**
+Point 2 is more instructive than point 1: **the takeaway is not an algorithm, it's a threshold.**
 
-> 该项目的目标是 4 张 PCIe 卡（无 NVLink）运行 NVFP4 量化的 MoE 模型，TP=4。其配置可作为 4 卡 PCIe 场景的参考起点。
+> That project targets 4 PCIe GPUs (no NVLink) running an NVFP4-quantized MoE model at TP=4. Its configuration is a reasonable starting reference for the 4-GPU PCIe scenario.
 
-**依据：实测**（来源：local-inference-lab/rtx6kpro 公开配置文件）
+**Basis: measured** (source: the public configuration files of local-inference-lab/rtx6kpro)
 
-## 3.3 NCCL 环境变量
+## 3.3 NCCL environment variables
 
-以下变量在 PCIe 机器上最常需要调整。**更改前请先建立基线测量**，否则无法判断改动是否有效。
+These are the variables most often worth tuning on PCIe machines. **Establish a baseline measurement before changing anything**, otherwise you cannot tell whether a change helped.
 
-| 变量 | 作用 | 典型用途 |
+| Variable | What it does | Typical use |
 |---|---|---|
-| `NCCL_P2P_LEVEL` | 允许 P2P 传输的最高拓扑层级（`PIX`/`PXB`/`PHB`/`SYS`） | 跨 NUMA 卡对可限制为 `PIX` 避免走慢链路 |
-| `NCCL_P2P_DISABLE` | 完全禁用 GPU 间 P2P | 排查 P2P 不稳定时的诊断手段 |
-| `NCCL_ALGO` | 选择集合通信算法（`Ring` / `Tree`） | 卡数少时 `Tree` 可降低延迟 |
-| `NCCL_PROTO` | 传输协议（`LL` / `LL128` / `Simple`） | 小消息场景 `LL` 常优，大消息 `Simple` |
-| `NCCL_MIN_NCHANNELS` | 通道数下限 | 带宽利用率不足时可上调 |
-| `NCCL_BUFFSIZE` | 分片缓冲大小 | 与消息规模匹配 |
-| `NCCL_ASYNC_ERROR_HANDLING` | 异步错误处理 | 排查超时时临时关闭，**不要用于生产** |
+| `NCCL_P2P_LEVEL` | Highest topology level at which P2P transfers are allowed (`PIX`/`PXB`/`PHB`/`SYS`) | For cross-NUMA GPU pairs, restrict to `PIX` to avoid the slow path |
+| `NCCL_P2P_DISABLE` | Disable GPU-to-GPU P2P entirely | A diagnostic tool when P2P is suspected of being unstable |
+| `NCCL_ALGO` | Select the collective algorithm (`Ring` / `Tree`) | With few GPUs, `Tree` can reduce latency |
+| `NCCL_PROTO` | Transport protocol (`LL` / `LL128` / `Simple`) | `LL` often wins for small messages, `Simple` for large ones |
+| `NCCL_MIN_NCHANNELS` | Minimum number of channels | Raise it when bandwidth utilization is too low |
+| `NCCL_BUFFSIZE` | Chunk buffer size | Match it to your message sizes |
+| `NCCL_ASYNC_ERROR_HANDLING` | Asynchronous error handling | Temporarily disable when debugging hangs; **do not use in production** |
 
-**通用排查顺序**：
+**General troubleshooting order**:
 
 ```bash
-# 1. 先确认拓扑，再动手（见 01 章）
+# 1. Confirm the topology before touching anything (see chapter 01)
 nvidia-smi topo -m
 
-# 2. 用 nccl-tests 建立基线
+# 2. Establish a baseline with nccl-tests
 all_reduce_perf -b 8 -e 128M -f 2 -g 4
 
-# 3. 一次只改一个变量，重新测量
-# 4. 记录：改动 + 前后数值 + 硬件与软件版本
+# 3. Change one variable at a time, then re-measure
+# 4. Record: the change + before/after numbers + hardware and software versions
 ```
 
-**依据：可推导**（NCCL 变量语义以其官方文档为准）
+**Basis: derivable** (for NCCL variable semantics, the official documentation is authoritative)
 
-## 3.4 与推测解码的相互作用
+## 3.4 Interaction with speculative decoding
 
-推测解码会**放大通信压力**：
+Speculative decoding **amplifies communication pressure**:
 
-- 草稿阶段产生的候选 token 需要在卡间同步验证结果
-- draft 越长，单次验证的数据量越大
-- 草稿模型本身如果也是 TP 切分，它的 all-reduce 会和主模型的通信竞争同一条 PCIe 链路
+- Candidate tokens produced by the draft phase must be verified in sync across GPUs
+- The longer the draft, the more data each verification round moves
+- If the draft model is itself TP-sharded, its all-reduces compete with the main model's traffic for the same PCIe link
 
-这就是为什么在 PCIe 机器上，推测解码的收益比在 NVLink 机器上更小，且 draft 长度需要更保守。展开见 [05 推测解码](05-speculative.md)。
+This is why speculative decoding pays off less on PCIe machines than on NVLink machines, and why draft lengths need to be more conservative there. See [05 Speculative decoding](05-speculative.md) for details.
 
-**依据：可推导**
+**Basis: derivable**
 
-## 3.5 测量模板
+## 3.5 Measurement template
 
 ```markdown
-### 配置
-- GPU / 数量：
-- 拓扑（topo -m 摘要）：
-- 并行配置（TP/PP）：
-- NCCL 版本：
-- 相关环境变量：
+### Configuration
+- GPU / count:
+- Topology (topo -m summary):
+- Parallel configuration (TP/PP):
+- NCCL version:
+- Relevant environment variables:
 
-### nccl-tests all_reduce_perf 结果
-| 消息大小 | 算法/协议 | 耗时 | 带宽 |
+### nccl-tests all_reduce_perf results
+| Message size | Algorithm/protocol | Time | Bandwidth |
 |---|---|---|---|
 
-### 推理侧对照
-| 配置 | C1 输出 | C8 聚合 | 备注 |
+### Inference-side comparison
+| Configuration | C1 output | C8 aggregate | Notes |
 |---|---|---|---|
 ```
 
-**依据：待测**
+**Basis: open**
 
 ---
 
-上一章：[02 并行策略](02-parallelism.md) ｜ 下一章：[04 量化选型](04-quantization.md)
+Previous chapter: [02 Parallelism](02-parallelism.md) | Next chapter: [04 Quantization](04-quantization.md)

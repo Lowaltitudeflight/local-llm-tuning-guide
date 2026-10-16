@@ -1,0 +1,45 @@
+# Publishes tools/config-generator.html as the GitHub Pages site.
+#
+# The tool is a single offline file, so the whole "site" is one page copied
+# to index.html. After the first successful run, Settings → Pages will show
+# the GitHub Actions source; the site lives at
+# https://lowaltitudeflight.github.io/local-llm-tuning-guide/
+
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/config-generator.html"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare site (single offline page)
+        run: |
+          mkdir -p _site
+          cp tools/config-generator.html _site/index.html
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

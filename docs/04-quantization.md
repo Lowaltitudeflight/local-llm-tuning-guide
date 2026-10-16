@@ -1,113 +1,113 @@
-# 04 量化选型
+# 04 Quantization
 
-> 量化是在显存和输出质量之间做交易。这一章讲清楚交易的代价在哪里，以及怎么验证你没亏本。
+> Quantization is a trade between VRAM and output quality. This chapter explains where the cost of that trade actually lands, and how to verify you didn't lose more than you gained.
 
-## 4.1 格式对照
+## 4.1 Format comparison
 
-下表只描述**权重**部分的相对体积，实际显存占用还包含 KV 缓存、激活值和运行时开销。
+The table below describes only the relative size of the **weights**; actual VRAM usage also includes the KV cache, activations, and runtime overhead.
 
-| 格式 | 权重量化 | 激活量化 | 权重大致占比 | 硬件要求 |
+| Format | Weight quantization | Activation quantization | Approx. weight share | Hardware requirement |
 |---|---|---|---|---|
-| BF16 / FP16 | 16 bit | 16 bit | 100%（基准） | 全部 |
-| FP8 (E4M3/E5M2) | 8 bit | 8 bit | ~50% | Hopper 及以后 |
-| MXFP8 | 8 bit（微缩放） | 8 bit | ~50% | Blackwell 原生 |
-| AWQ / GPTQ | 4 bit | 16 bit | ~30% | 有对应内核即可 |
-| W4A8 | 4 bit | 8 bit | ~30% | 依赖内核支持 |
-| NVFP4 | 4 bit | 4 bit | ~25% | Blackwell 原生 |
+| BF16 / FP16 | 16 bit | 16 bit | 100% (baseline) | Everything |
+| FP8 (E4M3/E5M2) | 8 bit | 8 bit | ~50% | Hopper and newer |
+| MXFP8 | 8 bit (microscaling) | 8 bit | ~50% | Native on Blackwell |
+| AWQ / GPTQ | 4 bit | 16 bit | ~30% | Anything with the matching kernels |
+| W4A8 | 4 bit | 8 bit | ~30% | Depends on kernel support |
+| NVFP4 | 4 bit | 4 bit | ~25% | Native on Blackwell |
 
-**趋势**：比特越少，显存越省，但激活量化越激进，对输出稳定性的风险越大。`W4A16`（权重 4 bit、激活 16 bit）通常是最保守的激进方案。
+**The trend**: fewer bits save more VRAM, but the more aggressively activations are quantized, the greater the risk to output stability. `W4A16` (4-bit weights, 16-bit activations) is usually the most conservative of the aggressive options.
 
-**依据：可推导**
+**Basis: derivable**
 
-## 4.2 MoE 模型：先保护路由层
+## 4.2 MoE models: protect the router first
 
-MoE 模型有一个特殊风险：**路由器选错专家，输出会被彻底带偏**，而这个错误不会被权重量化的"平均误差"掩盖——它是离散的、跳变式的。
+MoE models carry a specific risk: **when the router picks the wrong expert, the output goes off the rails entirely**, and this failure is not masked by the "average error" of weight quantization — it is discrete and discontinuous.
 
-公开研究（Local Inference Lab 对 GLM-5.3-Flash 的量化报告）专门比较了：
+Published research (Local Inference Lab's quantization report on GLM-5.3-Flash) specifically compared:
 
-- **W4A4 / W4A8 / W4A16** 三种激活精度
-- **FP32 router 权重**的影响
-- 关注指标是 **greedy checksum 稳定性**（相同输入是否稳定产生相同输出）和**速度代价**
+- Three activation precisions: **W4A4 / W4A8 / W4A16**
+- The effect of keeping **FP32 router weights**
+- The metrics of interest were **greedy checksum stability** (does the same input reliably produce the same output) and **the speed cost**
 
-其结论指向：激活量化越激进，MoE 的输出确定性越难保证；把路由器权重保持在更高精度，是性价比很高的一步。
+Its conclusion points one way: the more aggressively activations are quantized, the harder output determinism becomes to guarantee for MoE; keeping the router weights at higher precision is a very cost-effective step.
 
-> 具体数值请查阅其原始报告；本项目不转述未经核实的数字。
+> See the original report for the concrete numbers; this project does not republish unverified figures.
 
-**依据：实测**（来源：local-inference-lab/rtx6kpro，`checksum-stability-moe-activations` 报告）
+**Basis: measured** (source: local-inference-lab/rtx6kpro, the `checksum-stability-moe-activations` report)
 
-**实践建议**：
+**Practical recommendations**:
 
-| 优先级 | 做法 |
+| Priority | Action |
 |---|---|
-| 1 | 路由器权重保持 FP32 或至少 BF16 |
-| 2 | 专家权重可以更激进量化 |
-| 3 | 激活精度从 A16 起步，确认无损后再降 |
+| 1 | Keep router weights in FP32, or at least BF16 |
+| 2 | Expert weights can be quantized more aggressively |
+| 3 | Start activations at A16, and only lower it after confirming no loss |
 
-## 4.3 怎么验证量化没有亏本
+## 4.3 How to verify quantization didn't cost you
 
-量化质量不能只看"能不能跑"。建议三层验证，由浅入深：
+Quantization quality cannot be judged by "does it run". Three levels of verification, from shallow to deep:
 
-| 层级 | 方法 | 回答什么问题 |
+| Level | Method | Question it answers |
 |---|---|---|
-| 分布层 | **KLD**（KL 散度） | 量化后输出分布偏离原模型多少 |
-| 行为层 | **重复/变前缀校验、checksum 稳定性** | 相同输入是否稳定产生相同输出 |
-| 任务层 | **真实任务基准** | 在你要用的场景里效果掉了没 |
+| Distribution level | **KLD** (KL divergence) | How far the post-quantization output distribution has drifted from the original model |
+| Behavior level | **Repeat / mutated-prefix checks, checksum stability** | Does the same input reliably produce the same output |
+| Task level | **Real task benchmarks** | Did quality drop in the scenario you actually care about |
 
-**关于 KLD 的正确理解**：它是回归和质量控制工具，**不是完整的质量指标**。KLD 好看不代表任务表现好，KLD 变差则基本可以确认有问题。要与长上下文解码、代码补全、接受率检查等具体探针结合使用。
+**How to read KLD correctly**: it is a regression and quality-control tool, **not a complete quality metric**. A good KLD does not mean good task performance, but a worsening KLD almost certainly means something is wrong. Pair it with concrete probes such as long-context decoding, code completion, and acceptance-rate checks.
 
-**一个容易被忽略的检查项**：**输出确定性**。同一 prompt 用 greedy 解码跑两次，输出应当完全一致。如果量化后不一致了，说明数值路径出了问题——这在 MoE 上尤其常见。
+**One check that is easy to overlook**: **output determinism**. Run the same prompt twice with greedy decoding; the outputs should be byte-identical. If they diverge after quantization, something in the numerical path has broken — and this is especially common on MoE models.
 
-**依据：可推导 + 实测**（KLD 方法论参考 local-inference-lab/rtx6kpro 的公开方法）
+**Basis: derivable + measured** (the KLD methodology follows the published approach of local-inference-lab/rtx6kpro)
 
-## 4.4 选型决策
+## 4.4 Selection decision flow
 
 ```
-1. 硬件支持 4-bit 原生格式（Blackwell）?
-   ├─ 是 → 可以评估 NVFP4，但从 W4A8 起步更稳妥
-   └─ 否 → 用 AWQ/GPTQ（W4A16），激活保持 16 bit
+1. Does the hardware support a native 4-bit format (Blackwell)?
+   ├─ Yes → NVFP4 is worth evaluating, but starting at W4A8 is safer
+   └─ No  → use AWQ/GPTQ (W4A16), keep activations at 16 bit
 
-2. 是 MoE 模型?
-   ├─ 是 → 路由器权重不要一起量化
-   └─ 否 → 常规策略
+2. Is it an MoE model?
+   ├─ Yes → do not quantize the router weights along with everything else
+   └─ No  → standard strategy
 
-3. 显存够吗?
-   ├─ 够 → 优先提高 KV 精度或上下文长度，而不是更激进的权重量化
-   └─ 不够 → 再降权重精度
+3. Is VRAM sufficient?
+   ├─ Yes → prefer raising KV precision or context length over more aggressive weight quantization
+   └─ No  → then lower the weight precision
 
-4. 验证
-   → KLD + 确定性检查 + 你自己的任务基准
+4. Verify
+   → KLD + determinism checks + your own task benchmarks
 ```
 
-**一条经验**：如果只是差一点显存，优先调整 `gpu-memory-utilization` 或缩短上下文，而不是动量化格式。量化格式的改变是全局性的，代价比调几个参数大得多。
+**One rule of thumb**: if you are only slightly short on VRAM, adjust `gpu-memory-utilization` or shorten the context rather than changing the quantization format. A change of quantization format is global in effect and costs far more than tuning a few parameters.
 
-## 4.5 测量模板
+## 4.5 Measurement template
 
 ```markdown
-### 量化配置
-- 基线模型：
-- 量化格式（权重/激活）：
-- 路由器精度：
-- 量化工具与版本：
+### Quantization configuration
+- Baseline model:
+- Quantization format (weights/activations):
+- Router precision:
+- Quantization tool and version:
 
 ### KLD
-| 对比对象 | KLD | 样本量 | 上下文长度 |
+| Comparison | KLD | Sample size | Context length |
 |---|---|---|---|
 
-### 确定性
-- greedy 重复输出一致：是 / 否
-- 变前缀测试：通过 / 不通过
+### Determinism
+- Greedy repeat output identical: yes / no
+- Mutated-prefix test: pass / fail
 
-### 任务基准
-| 任务 | 基线得分 | 量化后得分 | 变化 |
+### Task benchmarks
+| Task | Baseline score | Quantized score | Change |
 |---|---|---|---|
 
-### 速度代价
-| 配置 | C1 输出 | C8 聚合 |
+### Speed cost
+| Configuration | C1 output | C8 aggregate |
 |---|---|---|
 ```
 
-**依据：待测**
+**Basis: open**
 
 ---
 
-上一章：[03 通信优化](03-communication.md) ｜ 下一章：[05 推测解码](05-speculative.md)
+Previous chapter: [03 Communication](03-communication.md) | Next chapter: [05 Speculative decoding](05-speculative.md)

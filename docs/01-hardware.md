@@ -1,53 +1,53 @@
-# 01 硬件与拓扑
+# 01 Hardware & Topology
 
-> 动手调参之前，先搞清楚你的卡是怎么连的。这一步做错，后面所有参数都是错的。
+> Before you touch a single parameter, understand how your GPUs are actually wired together. Get this step wrong and every setting after it is wrong too.
 
-## 1.1 差距有多大
+## 1.1 How big is the gap
 
-| 互联方式 | 典型双向带宽 | 出现场景 |
+| Interconnect | Typical bidirectional bandwidth | Where you see it |
 |---|---|---|
-| PCIe 4.0 x16 | ~64 GB/s | 上代平台、消费级主板 |
-| PCIe 5.0 x16 | ~128 GB/s | 当前主流工作站与服务器 |
+| PCIe 4.0 x16 | ~64 GB/s | Previous-gen platforms, consumer motherboards |
+| PCIe 5.0 x16 | ~128 GB/s | Current mainstream workstations and servers |
 | NVLink 3 (A100) | ~600 GB/s | A100 SXM |
 | NVLink 4 (H100) | ~900 GB/s | H100 SXM |
 | NVLink 5 (B200) | ~1800 GB/s | B200 / GB200 |
 
-两者差 **7 到 14 倍**。这是为什么所有"照抄 NVLink 集群配置"的做法在没有 NVLink 的机器上都会失效。
+That is a **7x to 14x** difference. This is why every recipe copied from an NVLink cluster falls apart on machines without NVLink.
 
-**依据：可推导**（均为厂商公开规格）
+**Basis: derivable** (all figures are vendor-published specifications)
 
-## 1.2 关键：PCIe 也不是均质的
+## 1.2 The key point: PCIe is not homogeneous either
 
-同样是四张 PCIe 卡，拓扑可能完全不同。带宽从高到低：
+Four PCIe cards can have completely different topologies. From fastest to slowest:
 
-| `nvidia-smi topo -m` 标记 | 含义 | 相对速度 |
+| `nvidia-smi topo -m` label | Meaning | Relative speed |
 |---|---|---|
-| `NV#` | NVLink，数字是链路数 | 最快 |
-| `PIX` | 经过**单个** PCIe Switch | 快 |
-| `PXB` | 经过**多个** PCIe Switch | 中 |
-| `PHB` | 经过 PCIe Host Bridge（CPU 引出） | 慢 |
-| `SYS` | 经过 CPU 间 SMP 互连（跨 NUMA） | 最慢 |
-| `NODE` | 同一 NUMA 节点内 | — |
+| `NV#` | NVLink, the number is the link count | Fastest |
+| `PIX` | Through a **single** PCIe Switch | Fast |
+| `PXB` | Through **multiple** PCIe Switches | Medium |
+| `PHB` | Through a PCIe Host Bridge (fanned out by the CPU) | Slow |
+| `SYS` | Across the inter-CPU SMP interconnect (crosses NUMA) | Slowest |
+| `NODE` | Within the same NUMA node | — |
 
-**对推理的意义**：TP 的每一步 all-reduce 都会走这条路径。如果卡对之间是 `SYS`，那部分通信要先出 CPU、过 QPI/UPI、再进另一颗 CPU——延迟可能是 `PIX` 的若干倍。
+**What this means for inference**: every all-reduce step of TP travels along these paths. If a pair of cards is connected via `SYS`, that traffic has to leave one CPU, cross QPI/UPI, and enter the other CPU — latency can be several times that of `PIX`.
 
-**依据：可推导**
+**Basis: derivable**
 
-## 1.3 先跑这三条命令
+## 1.3 Run these three commands first
 
 ```bash
-# 1. GPU 之间的连接关系 —— 最重要的一条
+# 1. How the GPUs are connected to each other — the most important one
 nvidia-smi topo -m
 
-# 2. 每张卡挂在哪个 PCIe 插槽、什么代数、什么宽度
+# 2. Which PCIe slot each card sits in, at what generation and width
 nvidia-smi -q | grep -A2 "GPU Link Info"
 
-# 3. NUMA 布局（几颗 CPU、各自管辖哪些卡）
+# 3. NUMA layout (how many CPUs, which cards each one owns)
 lscpu | grep -i numa
 numactl --hardware
 ```
 
-`nvidia-smi topo -m` 的输出是一张矩阵，交叉点就是两张卡之间的连接类型：
+The output of `nvidia-smi topo -m` is a matrix; each cell shows the connection type between two cards:
 
 ```
         GPU0    GPU1    GPU2    GPU3    CPU Affinity    NUMA Affinity
@@ -57,45 +57,45 @@ GPU2    PXB     PXB      X      SYS     0-31            0
 GPU3    SYS     SYS     SYS      X      32-63           1
 ```
 
-这个例子里：GPU0/1/2 在同一组 PCIe Switch 下（`PIX`/`PXB`），而 GPU3 在另一颗 CPU 上（`SYS`）。**结论直接就有了：TP=4 会跨越最慢的那条链路，应该考虑 TP=3（走 Switch 内）或 2×2 的组合。**
+In this example, GPU0/1/2 sit behind the same set of PCIe Switches (`PIX`/`PXB`), while GPU3 hangs off the other CPU (`SYS`). **The conclusion falls out immediately: TP=4 would cross the slowest link, so consider TP=3 (staying within the switch) or a 2x2 arrangement.**
 
-## 1.4 拓扑决定了什么
+## 1.4 What the topology decides
 
-| 观察到的情况 | 配置含义 |
+| What you observe | Configuration implication |
 |---|---|
-| 全部 `NV#` | 正常 NVLink 集群，可按常规建议配置 |
-| 全部 `PIX` | 四卡同 Switch，TP=4 可行，但需关注 all-reduce 模式 |
-| 混有 `PXB` / `PHB` | 谨慎放大 TP，考虑 PP 拆分 |
-| 出现 `SYS` | **TP 不要跨越 SYS 边界**，那是性能悬崖 |
+| All `NV#` | A normal NVLink cluster; follow the standard advice |
+| All `PIX` | Four cards on one switch; TP=4 is viable, but watch the all-reduce pattern |
+| A mix of `PXB` / `PHB` | Scale TP cautiously, consider splitting with PP |
+| Any `SYS` | **Do not let TP cross the SYS boundary** — that is the performance cliff |
 
-## 1.5 测量模板
+## 1.5 Measurement template
 
-本项目不给出未经核实的带宽数字。请用下面这份模板测量并提交（见 [CONTRIBUTING.md](../CONTRIBUTING.md)）：
+This project does not publish unverified bandwidth numbers. Use the template below to measure and submit your results (see [CONTRIBUTING.md](../CONTRIBUTING.md)):
 
 ```markdown
-### 硬件
-- GPU 型号 / 数量：
-- 显卡互联（topo -m 摘要）：
-- CPU / NUMA 域：
-- 主板 / PCIe Switch：
-- PCIe 代数与宽度：
+### Hardware
+- GPU model / count:
+- GPU interconnect (topo -m summary):
+- CPU / NUMA domains:
+- Motherboard / PCIe Switch:
+- PCIe generation and width:
 
-### 测量
-| 卡对 | topo 标记 | all-reduce 32MB 耗时 | 实测带宽 |
+### Measurements
+| GPU pair | topo label | all-reduce 32MB time | measured bandwidth |
 |---|---|---|---|
 | 0-1 |  |  |  |
 | 0-3 |  |  |  |
 
-### 工具与版本
-- NCCL 版本：
-- CUDA 版本：
-- 测量命令：
+### Tools and versions
+- NCCL version:
+- CUDA version:
+- Measurement command:
 ```
 
-推荐测量工具：`nccl-tests`（`all_reduce_perf`）、`nvbandwidth`。
+Recommended measurement tools: `nccl-tests` (`all_reduce_perf`), `nvbandwidth`.
 
-**依据：待测**
+**Basis: open**
 
 ---
 
-下一章：[02 并行策略](02-parallelism.md)
+Next chapter: [02 Parallelism](02-parallelism.md)
