@@ -15,11 +15,13 @@ The planner feeds existing measured data directly into its planning output.
 
 ## First-party measurements from this project
 
-*To be filled. Contributions of measurements from your own machines are welcome — **an empty cell is far more useful than a made-up number**.*
-
 | Hardware | Model | Configuration | C1 output | C8 aggregate | Submitter | Link |
 |---|---|---|---|---|---|---|
-| — | — | — | — | — | — | — |
+| 8 × RTX PRO 5000 72GB (PCIe, dual NUMA, no NVLink) | Qwen3.8-27B BF16 | TP8 (naive) | 75.3 tok/s | 352.4 tok/s | Lowaltitudeflight | [JSON](data/qwen38-27b-8x-72gb-pcie-parallelism.json) |
+| 8 × RTX PRO 5000 72GB (PCIe, dual NUMA, no NVLink) | Qwen3.8-27B BF16 | TP8 + DP-attention 8 | 37.7 tok/s | 233.6 tok/s | Lowaltitudeflight | [JSON](data/qwen38-27b-8x-72gb-pcie-parallelism.json) |
+| 8 × RTX PRO 5000 72GB (PCIe, dual NUMA, no NVLink) | Qwen3.8-27B BF16 | TP4 (one NUMA node) | 64.2 tok/s | 314.5 tok/s | Lowaltitudeflight | [JSON](data/qwen38-27b-8x-72gb-pcie-parallelism.json) |
+
+Measured 2026-10-23, input 4096 / output 512 tokens, sglang 0.5.22. Key finding: for this dense model, naive TP8 beat both alternatives — see the JSON's `transferable` / `not_transferable` fields before reusing the ranking. Contributions of measurements from your own machines are welcome — **an empty cell is far more useful than a made-up number**.
 
 ## External reference data
 

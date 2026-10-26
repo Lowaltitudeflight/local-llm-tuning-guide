@@ -17,6 +17,7 @@
 | [4x-24gb-pcie](4x-24gb-pcie.md) | 4 × 24 GB 卡，PCIe 互联（RTX 4090 / 3090 类） | 参考起点 |
 | [4x-96gb-pcie](4x-96gb-pcie.md) | 4 × 96 GB 卡，PCIe 互联（RTX PRO 6000 类） | 参考起点 |
 | [8x-24gb-pcie](8x-24gb-pcie.md) | 8 × 24 GB 卡，PCIe 互联（RTX 4090 类） | 参考起点 |
+| [8x-72gb-pcie](8x-72gb-pcie.md) | 8 × 72 GB 卡，PCIe 互联、双 NUMA（RTX PRO 5000 Blackwell 类） | 2026-10-23 第一方实测（稠密 27B：朴素 TP8 最快） |
 
 ## 配方包含什么
 

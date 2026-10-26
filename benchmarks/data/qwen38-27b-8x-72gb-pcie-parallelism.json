@@ -1,0 +1,89 @@
+{
+  "schema": "lltg.benchmark.v1",
+  "id": "qwen38-27b-8x-72gb-pcie-parallelism",
+  "kind": "first-party",
+  "title": "Parallelism on 8x RTX PRO 5000 72GB over PCIe (dual NUMA): naive TP8 beats TP4-on-one-node and DP-attention for a dense 27B",
+  "date": "2026-10-23",
+  "hardware": {
+    "gpus": "8 x NVIDIA RTX PRO 5000 72GB Blackwell",
+    "vram_gb_per_gpu": 72,
+    "power_limit": "300 W per GPU",
+    "interconnect": "PCIe only, no NVLink; GPU0-3 NODE within NUMA0, GPU4-7 NODE within NUMA1, cross-group SYS",
+    "topology_summary": "nvidia-smi topo -m: 4+4 GPUs split across two CPU sockets",
+    "cpu_numa": "2 x Xeon Platinum 8488C, 192 threads; GPU0-3 -> NUMA0, GPU4-7 -> NUMA1; 1.5 TB RAM"
+  },
+  "software": {
+    "driver": "595.71.05",
+    "cuda": "13.0.3 (container runtime; host driver reports 13.2)",
+    "nccl": "2.30.7 (bundled with torch 2.14.1+cu130)",
+    "framework": "SGLang",
+    "framework_version": "0.5.22",
+    "image": "lmsysorg/sglang:latest (official, pulled 2026-10-23)"
+  },
+  "model": {
+    "name": "Qwen3.8-27B (Qwen3_5ForConditionalGeneration, text-only requests)",
+    "quantization": "BF16 (unquantized)",
+    "revision": null
+  },
+  "workload": {
+    "concurrency": [1, 8],
+    "input_tokens": 4096,
+    "output_tokens": 512,
+    "sampling": "temperature 0.0 (bench_serving default), ignore_eos",
+    "server_notes": "mem-fraction-static 0.85, chunked-prefill 32768, max-running-requests 64, KV cache bf16 (auto); fresh server container per launch; raw per-run outputs in data/raw-2026-10-23-zkyd/"
+  },
+  "results": [
+    {
+      "config": "TP8 (all 8 GPUs, all-reduce crosses the NUMA boundary)",
+      "metrics": {
+        "output_c1_toks": 75.3,
+        "aggregate_c8_toks": 352.4,
+        "ttft_c1_ms": 592.3,
+        "tpot_c8_ms": 16.2
+      }
+    },
+    {
+      "config": "TP8 + DP-attention 8 (--enable-dp-attention --dp 8)",
+      "metrics": {
+        "output_c1_toks": 37.7,
+        "aggregate_c8_toks": 233.6,
+        "ttft_c1_ms": 2825.1,
+        "tpot_c8_ms": 22.2
+      }
+    },
+    {
+      "config": "TP4 on NUMA0 (CUDA_VISIBLE_DEVICES=0,1,2,3)",
+      "metrics": {
+        "output_c1_toks": 64.2,
+        "aggregate_c8_toks": 314.5,
+        "ttft_c1_ms": 603.1,
+        "tpot_c8_ms": 18.7
+      }
+    }
+  ],
+  "variance": {
+    "note": "output throughput across independent cold starts (fresh container each time); spread under ±1.5% for every config",
+    "output_c1_toks": {
+      "TP8": [74.7, 75.6, 75.8],
+      "TP8+DP8": [37.7, 37.8, 37.8],
+      "TP4-NUMA0": [64.1, 64.2, 64.3]
+    },
+    "aggregate_c8_toks": {
+      "TP8": [351.3, 352.7, 353.1],
+      "TP8+DP8": [233.5, 233.6, 233.7],
+      "TP4-NUMA0": [314.1, 314.6, 314.7]
+    }
+  },
+  "methodology": "sglang.bench_serving, random dataset, input 4096 / output 512 tokens, range-ratio 1; C1 = 5 prompts at max-concurrency 1, C8 = 24 prompts at max-concurrency 8; fresh server container per launch; 3 launches per config",
+  "transferable": [
+    "On dual-socket x86 with no NVLink (PCIe only), naive TP8 outperformed both TP4-on-one-NUMA-node and TP8+DP-attention for a 27B dense GQA model — at this model size, compute scaling beats the cross-socket all-reduce penalty",
+    "DP-attention halved single-stream throughput at C1 (37.7 vs 75.3 tok/s): at low concurrency most DP ranks sit idle while the weights stay partitioned 8 ways",
+    "TP4 on a single NUMA node kept ~89% of TP8 C1 throughput with half the hardware — a viable config when the other 4 GPUs are needed elsewhere"
+  ],
+  "not_transferable": [
+    "Absolute numbers (driver, framework version, quantization dependent)",
+    "MoE models: the DP-attention + EP layout that the MiniMax M3.1-Flash launch script on this same machine uses was NOT tested here — the dense-model ranking above may reverse for MoE",
+    "Models too large to fit on 4 GPUs (they cannot take the TP4 path)",
+    "NVLink-connected systems (all-reduce cost profile is entirely different)"
+  ]
+}
