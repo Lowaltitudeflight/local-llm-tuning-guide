@@ -29,7 +29,7 @@ Usage
     python tools/planner.py --gpus RTX4090 --count 4 --params 7 --quant fp16
     python tools/planner.py --gpus H800 --count 8 --model qwen2.5-72b \
         --ctx 32768 --goal throughput --json
-    python tools/planner.py --gpus RTXPRO5000-64 --count 8 --model qwen2.5-32b \
+    python tools/planner.py --gpus RTXPRO5000-72 --count 8 --model qwen2.5-32b \
         --benchmarks benchmarks/data
     python tools/planner.py --list-gpus
 
@@ -137,25 +137,40 @@ GPU_SPECS: Dict[str, Dict[str, object]] = {
         "grade": MEASURED,
         "source": "public multi-GPU scaling catalogue (0.75x per-GPU efficiency)",
     },
-    "RTXPRO5000-64": {
-        "vram_gb": 64, "link": "pcie", "link_bw_gbs": 128,
+    "RTXPRO5000-72": {
+        "vram_gb": 72, "link": "pcie", "link_bw_gbs": 128,
         "scaling": 0.78, "consumer": False,
-        "note": "RTX PRO 5000 Blackwell, 64 GB GDDR7, PCIe 5.0 x16 "
-                "(~128 GB/s bidirectional). Max-Q SKUs run a ~300 W power "
-                "limit and may hit the power wall before the VRAM wall.",
+        "note": "RTX PRO 5000 Blackwell, 72 GB GDDR7 (73,415 MiB reported), "
+                "PCIe 5.0 x16. First-party measured 2026-10-26: 300 W power "
+                "wall is the per-GPU throughput ceiling — single-stream decode "
+                "already draws ~300 W; c32 and c64 aggregate throughput are "
+                "identical on one GPU. Dual-socket boards are 4+4 across NUMA, "
+                "cross-group links are SYS.",
+        "grade": MEASURED,
+        "source": "first-party snapshot + single-card benchmark "
+                  "(benchmarks/data/qwen38-27b-bf16-singlecard-three-machines.json)",
+    },
+    "RTX5090-96": {
+        "vram_gb": 96, "link": "pcie", "link_bw_gbs": 128,
+        "scaling": 0.75, "consumer": True,
+        "note": "Modded RTX 5090 with 96 GB GDDR7 (aftermarket 96 GB variant), "
+                "PCIe, 575 W power limit, nominal ~1792 GB/s memory bandwidth. "
+                "Used as the A-machine in the first-party three-machine study; "
+                "peer-to-peer behavior may differ from stock 5090.",
         "grade": DERIVABLE,
-        "source": "NVIDIA product specifications; per-GPU scaling estimated "
-                  "from the pcie5 class",
+        "source": "first-party hardware inventory; bandwidth from public "
+                  "RTX 5090 specifications",
     },
     "RTXPRO6000-96": {
         "vram_gb": 96, "link": "pcie", "link_bw_gbs": 128,
         "scaling": 0.78, "consumer": False,
-        "note": "RTX PRO 6000 Blackwell, 96 GB GDDR7, PCIe 5.0 x16 "
-                "(~128 GB/s bidirectional). Max-Q SKUs run a ~300 W power "
-                "limit and may hit the power wall before the VRAM wall.",
-        "grade": DERIVABLE,
-        "source": "NVIDIA product specifications; per-GPU scaling estimated "
-                  "from the pcie5 class",
+        "note": "RTX PRO 6000 Blackwell, 96 GB GDDR7, PCIe 5.0 x16. Server "
+                "Edition SKUs run a 600 W power limit and measured ~1597 GB/s "
+                "memory bandwidth; Max-Q SKUs run ~300 W and hit the power "
+                "wall before the VRAM wall.",
+        "grade": MEASURED,
+        "source": "first-party three-machine study: Server Edition 600 W / "
+                  "~1597 GB/s measured; Max-Q power limit from vendor specs",
     },
 }
 

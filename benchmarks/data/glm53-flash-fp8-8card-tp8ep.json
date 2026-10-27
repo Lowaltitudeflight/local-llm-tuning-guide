@@ -1,0 +1,71 @@
+{
+  "schema": "lltg.benchmark.v1",
+  "id": "glm53-flash-fp8-8card-tp8ep",
+  "kind": "first-party",
+  "title": "GLM-5.3-Flash FP8 (306 GB MoE) TP8+EP8 on two 96 GB PCIe hosts: A leads 7-16%, attribution is bandwidth/small-message/NUMA — not NCCL large-message bandwidth",
+  "date": "2026-10-22",
+  "hardware": {
+    "gpus": "A: 8x RTX 5090 96GB (modded, 575 W); B: 8x RTX PRO 6000 Blackwell Server Edition 96GB (600 W)",
+    "vram_gb_per_gpu": 96,
+    "power_limit": "575 W / 600 W",
+    "interconnect": "PCIe, no NVLink, both hosts",
+    "topology_summary": "dual-socket servers, 4+4 GPUs across NUMA nodes",
+    "cpu_numa": "B: GPU0+GPU4 dual hotspots (~285 W each) matching NUMA groups; A: GPU0 single hotspot (~358 W)"
+  },
+  "software": {
+    "driver": "595.71.05",
+    "cuda": "13.0.2 (vLLM container)",
+    "nccl": "2.29.7 bundled with torch 2.13.0+cu130 in the vLLM image; SuperBench microbenchmarks used 2.26.5",
+    "framework": "vLLM",
+    "framework_version": "0.32.0",
+    "image": "vllm/vllm-openai:v0.32.0@befccf0e (same digest both machines)"
+  },
+  "model": {
+    "name": "GLM-5.3-Flash (official ZhipuAI/GLM-5.3-Flash, FP8 W8A8 e4m3 dynamic, 306 GiB / 62 shards)",
+    "quantization": "FP8 (MoE experts FP8; NVFP4 variant skipped — not runnable in this stack)",
+    "revision": "official release"
+  },
+  "workload": {
+    "concurrency": [1, 8, 32, 64],
+    "input_tokens": "1024 (c*) / 32768 (ctx32k) / ShareGPT V3 real distribution",
+    "output_tokens": 256,
+    "sampling": "temperature 0, seed 42, ignore_eos",
+    "server_notes": "TP8 + EP8, max-model-len 131072, gpu-mem-util 0.92, max-num-seqs 256, max-num-batched-tokens 8192, port 8200; load ~675 s; B measured after BIOS interconnect fix (2026-10-22)"
+  },
+  "results": [
+    {
+      "config": "A — 8x RTX 5090 96GB (575 W)",
+      "metrics": {
+        "output_c1_toks": 74.37, "aggregate_c8_toks": 405.55,
+        "aggregate_c32_toks": 955.44, "aggregate_c64_toks": 1226.62,
+        "ctx32k_c1_toks": 60.20, "ctx32k_c4_toks": 181.39,
+        "sharegpt_c64_toks": 1621.41
+      }
+    },
+    {
+      "config": "B — 8x RTX PRO 6000 Server 96GB (600 W)",
+      "metrics": {
+        "output_c1_toks": 63.99, "aggregate_c8_toks": 378.19,
+        "aggregate_c32_toks": 865.24, "aggregate_c64_toks": 1136.27,
+        "ctx32k_c1_toks": 53.01, "ctx32k_c4_toks": 169.57,
+        "sharegpt_c64_toks": 1462.01
+      }
+    }
+  ],
+  "variance": {
+    "note": "cache-on means of 3 runs per label (A: 2026-10-22 04:29-06:53 UTC, 34 runs total all rc=0; B: 2026-10-22 09:41-12:24 UTC after BIOS fix); A c32 showed +/-14.28 spread, other labels <0.2%",
+    "aggregate_c32_toks": { "A": [955.44, "+/-14.28"] }
+  },
+  "methodology": "vllm bench serve, same matrix and seed as the single-card study; cache-on 3x + cache-off 1x per label; an earlier B-machine run before a BIOS interconnect fix was discarded and re-run",
+  "transferable": [
+    "A leads by 7.0-16.2% across the matrix despite B's higher BF16/FP8 compute (~1.85x/1.68x per microbenchmarks) — for streaming FP8 MoE decode, memory bandwidth (~1792 vs ~1597 GB/s) and small-message all-to-all (1MiB: A 16.03 vs B 13.44 GB/s) dominate",
+    "After B's BIOS interconnect fix, 1GiB NCCL busbw is ~99% of A on all four ops (allreduce 40.28 vs 40.61) — large-message interconnect is NOT the differentiator; an earlier claim of a 3.4-4x interconnect gap was pre-BIOS data and is retracted",
+    "B shows dual NUMA power hotspots (GPU0+GPU4) vs A's single GPU0 hotspot, matching the 4+4 topology"
+  ],
+  "not_transferable": [
+    "Absolute numbers (power limits, driver, NCCL 2.29.7 path)",
+    "B's remaining gap may include NCCL version/kernel differences (2.29.7 all-to-all not separately benchmarked) — needs profiler isolation",
+    "NVFP4 variant of GLM-5.3-Flash was skipped and behaves differently",
+    "Max-Q (300 W) SKUs will hit the power wall much earlier (see the three-machine single-card study)"
+  ]
+}

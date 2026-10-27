@@ -1,0 +1,84 @@
+{
+  "schema": "lltg.benchmark.v1",
+  "id": "qwen38-27b-bf16-singlecard-three-machines",
+  "kind": "first-party",
+  "title": "Single-card BF16 decode across three Blackwell SKUs: bandwidth decides c1, power wall caps high concurrency",
+  "date": "2026-10-26",
+  "hardware": {
+    "gpus": "A: RTX 5090 96GB (modded, 575 W); B: RTX PRO 6000 Blackwell Server Edition 96GB (600 W); C: RTX PRO 5000 Blackwell 72GB (300 W)",
+    "vram_gb_per_gpu": "96 / 96 / 72",
+    "power_limit": "575 W / 600 W / 300 W",
+    "interconnect": "irrelevant — TP1, one GPU per machine; A/B are 8-GPU hosts, C is 8x PRO 5000 dual-NUMA PCIe",
+    "topology_summary": "single-GPU test on GPU0 of each host",
+    "cpu_numa": "A/B: server platforms; C: 2x Xeon 8488C, GPU0 on NUMA0"
+  },
+  "software": {
+    "driver": "595.71.05 (all three)",
+    "cuda": "13.0.2 (vLLM container)",
+    "nccl": "not exercised (TP1)",
+    "framework": "vLLM",
+    "framework_version": "0.32.0 (image vllm/vllm-openai:v0.32.0@befccf0e, same digest on all machines)",
+    "image": "vllm/vllm-openai:v0.32.0@sha256:befccf0e7e4089aa23926bb6f887a85c0d46c2a99e6de5c5ffdf5cb7957c5b34"
+  },
+  "model": {
+    "name": "Qwen3.8-27B (official Qwen/Qwen3.8-27B, BF16, 51.75 GiB, hybrid linear-attention architecture)",
+    "quantization": "BF16 (unquantized)",
+    "revision": "official release, config sha256 verified identical across machines"
+  },
+  "workload": {
+    "concurrency": [1, 8, 32, 64],
+    "input_tokens": "1024 (c*) / 32768 (ctx32k) / ShareGPT V3 real distribution",
+    "output_tokens": 256,
+    "sampling": "temperature 0, seed 42, ignore_eos",
+    "server_notes": "max-model-len 33792, gpu-mem-util 0.85, max-num-batched-tokens 8192; prefix caching ON main pass / OFF control pass; cache-on 3 runs per label + cache-off 1 run. A/B: max-num-seqs 256; C: 128 (72GB card Mamba-cache limit, does not bind below c64). ctx32k_c4 not run on C: 4x32K exceeds its 6.78 GiB KV budget."
+  },
+  "results": [
+    {
+      "config": "A — RTX 5090 96GB (575 W, ~1792 GB/s)",
+      "metrics": {
+        "output_c1_toks": 29.68, "aggregate_c8_toks": 177.58,
+        "aggregate_c32_toks": 434.42, "aggregate_c64_toks": 559.63,
+        "ctx32k_c1_toks": 14.46, "ctx32k_c4_toks": 21.94,
+        "sharegpt_c64_toks": 900.34
+      }
+    },
+    {
+      "config": "B — RTX PRO 6000 Server 96GB (600 W, ~1597 GB/s)",
+      "metrics": {
+        "output_c1_toks": 26.10, "aggregate_c8_toks": 182.08,
+        "aggregate_c32_toks": 491.85, "aggregate_c64_toks": 697.91,
+        "ctx32k_c1_toks": 16.67, "ctx32k_c4_toks": 31.66,
+        "sharegpt_c64_toks": 933.12
+      }
+    },
+    {
+      "config": "C — RTX PRO 5000 72GB (300 W)",
+      "metrics": {
+        "output_c1_toks": 21.94, "aggregate_c8_toks": 137.42,
+        "aggregate_c32_toks": 300.72, "aggregate_c64_toks": 300.50,
+        "ctx32k_c1_toks": 11.31, "ctx32k_c4_toks": null,
+        "sharegpt_c64_toks": 483.84
+      }
+    }
+  ],
+  "variance": {
+    "note": "cache-on means of 3 independent runs per label; CV < 0.5% on C (21.94/21.94/21.94 for c1, 300.67/300.81/300.68 for c32); A/B same protocol, 28 runs on B all rc=0. C measured 2026-10-26 after a same-SKU card swap (c1 21.89 pre-swap vs 21.94 post-swap).",
+    "output_c1_toks": { "C": [21.94, 21.94, 21.94] },
+    "aggregate_c32_toks": { "C": [300.67, 300.81, 300.68] },
+    "aggregate_c64_toks": { "C": [300.98, 300.58, 299.93] }
+  },
+  "methodology": "vllm bench serve inside the serving container (server and client same host), random dataset, warmups 10 (c*) / 2 (ctx32k), 3 cache-on repeats per label + 1 cache-off pass with --no-enable-prefix-caching",
+  "transferable": [
+    "Single-stream decode (c1) ranks by memory bandwidth: A (1792) > B (1597) > C — measured 29.68 / 26.10 / 21.94 tok/s",
+    "Higher concurrency shifts the bottleneck to compute + power: B's BF16 compute advantage (~1.85x A) shows up progressively (c8 +2.5% -> c32 +13% -> c64 +25%), while C's 300 W power wall makes c32 and c64 IDENTICAL (~300.5 tok/s, +/-0.2%) — a hard throughput ceiling independent of concurrency",
+    "Long context (32K prefill) amplifies compute advantage: B beats A by 44% at ctx32k_c4",
+    "ShareGPT real-distribution results do NOT extrapolate from fixed-length c64 (B only +3.6% over A there vs +24.7% at c64)",
+    "Energy efficiency at c64: B ~1.69 tok/s/W > A ~1.04 > C ~1.02"
+  ],
+  "not_transferable": [
+    "Absolute numbers depend on driver/framework/quantization",
+    "Multi-GPU conclusions: this study is TP1 by design; see qwen38-27b-8x-72gb-pcie-parallelism.json for C-machine 8-GPU results",
+    "ctx32k_c4 on C is physically infeasible (KV budget), so C's long-context concurrency behavior is unmeasured",
+    "NVLink systems excluded entirely"
+  ]
+}

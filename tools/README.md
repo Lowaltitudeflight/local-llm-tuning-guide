@@ -32,7 +32,7 @@ python tools/planner.py --gpus L40S-48 --count 4 --params 70 \
 python tools/planner.py --gpus H800-80 --count 8 --model qwen2.5-72b --json
 
 # attach the measured data from benchmarks/data to the output
-python tools/planner.py --gpus RTXPRO5000-64 --count 8 --model qwen2.5-32b \
+python tools/planner.py --gpus RTXPRO5000-72 --count 8 --model qwen2.5-32b \
     --benchmarks benchmarks/data
 
 # just list what the benchmark directory holds
