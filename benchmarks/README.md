@@ -46,6 +46,21 @@ Key findings: c1 ranks by memory bandwidth; C's 300 W power wall makes c32 and c
 
 Key finding: A leads 7-16% despite B's higher compute — memory bandwidth and small-message all-to-all dominate streaming FP8 MoE decode. After B's BIOS interconnect fix, 1 GiB NCCL busbw is ~99% of A on all four ops; large-message interconnect is **not** the differentiator.
 
+### MiniMax-M3.1-Flash NVFP4, TP8 + Marlin on 8x RTX PRO 5000 72GB (SM120, 2026-11-02)
+
+252 GB checkpoint, MXFP8 dense + NVFP4 packed experts, served through the SM120 Marlin workaround (see [8x-72 recipe Case C](../recipes/8x-72gb-pcie.md#case-c-large-nvfp4-moe-minimax-m31-flash-252-gb--sm120-workaround)). vLLM bench, OpenAI completions, input 1024 / output 256, seed 42, cache-on 3-run mean ([JSON](data/minimax-m31-flash-8x72-sm120.json)):
+
+| Configuration | C1 output | C8 aggregate | C32 aggregate | C64 aggregate | ShareGPT C64 |
+|---|---:|---:|---:|---:|---:|
+| TP8 + Marlin (SM120) | 94.4 | 489.8 | 740.4 | **1060.8** | **1093.8** |
+| Cache off, C64 (1 run) | — | 383.3 | 588.3 | **821.0** | 1084.1 |
+
+Key findings:
+
+- Prefix cache is load-bearing: disabling it cut c8-c64 throughput by **20.5%-22.6%** and raised TTFT p50 by 3.7-5.8x; `ctx32k_c4` lost **41.9%**.
+- 1M context works: a cold **999,988-token** request finished in **517.7 s** with no OOM; a 1,047,992-token boundary request also succeeded. One 1M request consumes ~79% of the 1,329,280-token KV pool, so 1M concurrency is effectively 1.
+- The 1M configuration costs ~23% C64 throughput (815.7 tok/s) because prefill graphs are disabled and chunked prefill drops to 2048.
+
 ## External reference data
 
 Below are **publicly verifiable third-party measurements**, listed here to anchor parameter choices. **Note that they are results under specific conditions and cannot be extrapolated directly.**

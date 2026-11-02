@@ -17,11 +17,25 @@ Most self-hosted inference today runs on machines **without NVLink**: RTX 4090 /
 
 Yet the documentation, tuning advice, and default configurations of mainstream inference frameworks are almost all written under the assumption that GPUs talk over a fast interconnect. The consequences:
 
-- The same four GPUs produce 1,400 tok/s for one person and 600 tok/s for another — the difference is entirely configuration
+- The same four GPUs can differ by more than 2× in throughput (community reports; see [benchmarks](benchmarks/)) — the difference is configuration, not silicon
 - Articles explaining the principles are easy to find, but **their parameter recommendations contradict each other and rarely state test conditions**
 - You cannot tell whether a piece of advice applies to your machine
 
 This project supplies the missing half: **binding each conclusion to the conditions under which it is valid.**
+
+## Who this is for
+
+- You run 2–8 GPUs on one box, over PCIe, without NVLink.
+- You are choosing TP / PP / EP / replicas, quantization, or KV settings and want a starting point with its evidence attached.
+- You have a benchmark number and need to know whether it transfers to your machine.
+
+**Not for**: multi-node fabrics (InfiniBand, NVSwitch), training, or “which model is smartest” rankings. The guide is about serving configuration, not model quality.
+
+## Start here
+
+1. Run `python tools/detect_topology.py` and keep the JSON — it is the input to every later decision.
+2. Open the [model matrix](MODEL_MATRIX.md) to see whether your model fits, and on how many cards.
+3. Pick the closest [recipe](recipes/), copy the flags, then measure with [bench/run_matrix.py](bench/run_matrix.py) instead of trusting the defaults.
 
 ## Quick decision table
 
@@ -30,8 +44,8 @@ Six highest-frequency questions, answered first.
 | Your situation | Recommendation | Basis |
 |---|---|---|
 | Model (plus KV) fits on one GPU | **Prefer replicas over tensor parallelism** | Measured + derivable |
-| Model must be split; all GPUs under one PCIe switch | TP = number of GPUs under that switch | Derivable |
-| GPUs span PCIe switches or CPU sockets | **Do not let TP cross that boundary** — use TP × PP instead | Derivable |
+| Model must be split; all GPUs under one PCIe switch | **Start with TP = GPUs under that switch, then measure** — a dense 27B counterexample on this box beat TP4 with naive TP8 | Measured + derivable |
+| GPUs span PCIe switches or CPU sockets | **Avoid letting TP cross that boundary by default** — use TP × PP or replicas; exceptions exist, measure | Derivable + measured |
 | You want a longer context | Lower KV precision or add GPUs first; DCP gains little over PCIe | Measured + derivable |
 | You want speculative decoding for speed | **Longer drafts are not better** — start at 2–3 and measure | Measured |
 | Quantization hurts output quality | Check whether the MoE router was quantized along with the experts | Measured |
@@ -46,9 +60,14 @@ Six highest-frequency questions, answered first.
 | [04 Quantization](docs/04-quantization.md) | FP8 / MXFP8 / NVFP4 / AWQ trade-offs | What you pay for the memory you save |
 | [05 Speculative decoding](docs/05-speculative.md) | MTP / DFlash / EAGLE families | Why guessing more can be slower |
 | [06 KV cache](docs/06-kv-cache.md) | Memory budget, prefix cache, long context | How context eats your VRAM |
-| [Recipes](recipes/) | Ready-to-use configs by hardware | Copy and run |
+| [07 Troubleshooting](docs/07-troubleshooting.md) | Symptom → cause → fix | OOM, bad output, SM120 kernel gaps, hung containers |
+| [08 Power & cost](docs/08-power-cost.md) | Tokens per watt and per dollar | Why a 300 W card stops scaling |
+| [Model matrix](MODEL_MATRIX.md) | What fits on 72 GB cards | Weights, KV/token, minimum GPU count, verified configs |
+| [Recipes](recipes/) | Ready-to-use configs by hardware | [4×72](recipes/4x-72gb-pcie.md) · [8×72](recipes/8x-72gb-pcie.md) · [4×96](recipes/4x-96gb-pcie.md) · [8×24](recipes/8x-24gb-pcie.md) |
 | [Benchmarks](benchmarks/) | Data tables and measurement method | Fill the table with your own machine |
 | [Planner](tools/) | Hardware in, parallel strategy out | [CLI + offline web tool](tools/) · [try the web tool online](https://lowaltitudeflight.github.io/local-llm-tuning-guide/) |
+| [Glossary](docs/GLOSSARY.md) | Terms and abbreviations | TP / PP / EP / MLA / NVFP4 / SM120 |
+| [Articles](articles/) | Long-form write-ups | English abstracts + Chinese full text |
 
 Every chapter is also available in [简体中文](docs/zh-CN/) — as are the
 [recipes](recipes/zh-CN/), the [benchmark pages](benchmarks/zh-CN/), and

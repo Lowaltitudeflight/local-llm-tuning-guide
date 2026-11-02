@@ -1,0 +1,63 @@
+# 08 功耗与成本
+
+在多卡工作站上，“每瓦吞吐”是一等指标。同一代芯片可以差出 2 倍功耗墙，而便宜的那张卡可能“每块钱 token 数”更高、只是“每秒 token 数”更低。
+
+## 功耗墙就是吞吐天花板
+
+300 W 卡和 600 W 卡纸面 FLOPS 可能一样。持续 decode 负载下，300 W 卡撞到功耗墙后就不再扩展：加并发只会提高每瓦产出，不会提高总吞吐。
+
+第一方例子（Qwen3.8-27B BF16，TP1，c64，仅 GPU 功耗）：
+
+| 机器 | 功耗墙 | c64 输出 | tok/s per W |
+|---|---:|---:|---:|
+| RTX 5090 96GB | 575 W | 559.6 tok/s | ~0.97 |
+| RTX PRO 6000 Server 96GB | 600 W | 697.9 tok/s | ~1.16 |
+| RTX PRO 5000 72GB | 300 W | 300.5 tok/s | ~1.00 |
+
+PRO 5000 这行最值得看：**c32 和 c64 几乎一样**（300.72 vs 300.50 tok/s）——卡已经在功耗墙上了。每瓦数字不难看，但绝对吞吐上不去。
+
+> 这些是 `nvidia-smi` 的 GPU 功耗。墙插功耗更高：要加电源效率（约 90%）、CPU、风扇、网络。它们适合横向比较，不适合直接算电费。
+
+## 怎么测
+
+跑一个稳态窗口（30 秒足够），每秒采样，丢掉前几秒：
+
+```bash
+# 终端 1：稳定负载（任何能压住 batch 的客户端）
+python bench/run_matrix.py --labels c64 --reps 1 --base-url http://127.0.0.1:8000 \
+  --model <model> --tokenizer <path> --result-dir /tmp/power
+
+# 终端 2：跑的时候采功耗
+while true; do
+  nvidia-smi --query-gpu=index,power.draw,clocks.sm,temperature.gpu \
+    --format=csv,noheader,nounits
+  sleep 1
+done
+```
+
+计算 `tokens_per_watt = 输出吞吐 / 平均功耗`。记录时钟策略：锁频才可跨机器比较；自动频率会随散热漂移。
+
+## 每百万输出 token 的成本
+
+```text
+cost_per_1M = (平均 kW × 小时数 × 每 kWh 电价) / (tokens / 1,000,000)
+```
+
+例子：8 卡 × 300 W = 2.4 kW，聚合 1,060 tok/s，跑 1 小时：
+`2.4 kWh × 电价 / (1,060 × 3600 / 1e6) = 2.4 × 电价 / 3.816`。
+按 1 元/kWh，约 **0.63 元/百万输出 token** 的 GPU 电费——还没算利用率、散热和空载。一台空载 200 W 的机器，大部分电费花在“什么也没做”上；批处理要排满。
+
+## 实用规则
+
+1. **按你实际服务的并发测**。功耗受限的卡在 c1 看着正常，到 c32 就撞墙。
+2. **带宽瓶颈在 c1 的负载，不要为它买 600 W 卡**。多出来的功耗买的是高并发算力，不是单流速度。
+3. **tok/s/W 和 tok/s 一起报**。它们回答不同问题：“多快”和“多快才划算”。
+4. **空载功耗也算钱**。24/7 服务空载 200 W，可能比两张卡满载的差价还贵。
+
+## 还没验证的
+
+- 72 GB / 96 GB 配置的墙插功耗（含电源和主机）。
+- MoE 模型在 c32/c64 的每瓦吞吐——all-to-all 和专家路由会改变功耗曲线。
+- 锁频后 300 W 与 600 W 卡的排名是否变化。
+
+测了其中任何一项，欢迎用 [benchmark 模板](https://github.com/Lowaltitudeflight/local-llm-tuning-guide/issues/new?template=benchmark-report.yml) 提交。

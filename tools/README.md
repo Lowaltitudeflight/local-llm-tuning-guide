@@ -6,6 +6,8 @@ Two front ends over the same set of decisions.
 |---|---|---|
 | [`planner.py`](planner.py) | Command-line planner. Standard library only, no dependencies. | On a delivery host, in CI, or anywhere without a browser |
 | [`config-generator.html`](config-generator.html) | Single-file offline web page. No build step, no network. | Customer networks that block external resources; handing a file to someone |
+| [`detect_topology.py`](detect_topology.py) | Collects GPU topology, power limits, and NUMA layout as JSON. | Before choosing parallelism; also produces the hardware block of a recipe |
+| [`check_repo.py`](check_repo.py) | CI check: bilingual parity, relative links, benchmark schema. | Every push, locally or in GitHub Actions |
 
 Both answer the same three questions — interconnect, memory, strategy — and
 both refuse to invent numbers. They differ only in how you reach them.
@@ -40,7 +42,17 @@ python tools/planner.py --benchmarks benchmarks/data --list-benchmarks
 
 # hardware table and built-in models
 python tools/planner.py --list-gpus
+python tools/planner.py --list-models
 ```
+
+The built-in model table now includes Qwen3.8-27B, Qwen3-235B-A22B,
+MiniMax-M3.1-Flash, and DeepSeek-V4.1-Flash. The last one uses MLA, so its
+KV/token is a measured override rather than the GQA formula; pass
+`--kv-bytes-per-token` for your own build.
+
+On `--gpus RTXPRO5000-72`, the planner warns when the selected model needs an
+SM120 kernel workaround (MiniMax-M3.1-Flash, DeepSeek-V4.1-Flash). The warning
+also appears in `--json` output under `warnings`.
 
 ### What it decides
 
@@ -72,3 +84,32 @@ Run the checks with:
 ```bash
 python -m unittest discover tests -v
 ```
+
+## detect_topology.py
+
+```bash
+python tools/detect_topology.py            # human-readable summary
+python tools/detect_topology.py --json     # paste into a recipe / CI
+python tools/detect_topology.py --planner  # --gpus ... --count ... --group ...
+```
+
+It runs `nvidia-smi --query-gpu`, `nvidia-smi topo -m`, `numactl -H`, and
+`lspci`, then reports the PCIe/NUMA groups, whether NVLink is present, power
+limits, and a planner argument hint. Everything is read-only and offline.
+
+## check_repo.py
+
+```bash
+python tools/check_repo.py
+```
+
+Fails when a local Markdown link points at a missing file, an English chapter
+lacks its Chinese counterpart (or vice versa), or a benchmark JSON does not
+carry `lltg.benchmark.v1` and the fields the planner needs. CI runs it on every
+push and pull request.
+
+## bench/run_matrix.py
+
+The benchmark runner lives in [`../bench/run_matrix.py`](../bench/run_matrix.py).
+It wraps `vllm bench serve`, runs the C1/C8/C32/C64 + 32K + ShareGPT matrix,
+and writes `summary.json` / `summary.md` with variance across repeated runs.

@@ -15,3 +15,9 @@ jobs:
           python-version: "3.11"
       - name: Run planner unit tests (includes the offline-HTML check)
         run: python -m unittest discover tests -v
+      - name: Repository health checks (links, bilingual parity, benchmark schema)
+        run: python tools/check_repo.py
+      - name: Lint Python (ruff)
+        run: |
+          python -m pip install --quiet "ruff>=0.6,<1"
+          ruff check tools bench tests

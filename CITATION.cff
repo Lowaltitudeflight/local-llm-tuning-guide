@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this guide or its benchmark data, please cite it as below."
+title: "Local LLM Tuning Guide"
+abstract: "A decision library for multi-GPU LLM deployments without NVLink: topology-aware parallelism, quantization, speculative decoding, KV cache, recipes, and reproducible benchmark data."
+authors:
+  - name: "Lowaltitudeflight"
+version: 0.2.0
+date-released: 2026-11-02
+license: MIT
+repository-code: "https://github.com/Lowaltitudeflight/local-llm-tuning-guide"
+url: "https://lowaltitudeflight.github.io/local-llm-tuning-guide/"
+keywords:
+  - llm
+  - inference
+  - pcie
+  - tensor-parallelism
+  - quantization
+  - benchmark

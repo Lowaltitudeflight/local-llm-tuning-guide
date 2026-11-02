@@ -232,6 +232,21 @@ MODEL_ARCH: Dict[str, Dict[str, float]] = {
                     "kv_bytes_fp16": 40 * 40 * 128 * 2 * 2},     # 819 200 B
     "llama-2-70b": {"params": 70, "heads": 64, "kv_heads": 8,
                     "kv_bytes_fp16": 80 * 8 * 128 * 2 * 2},      # 327 680 B
+    # Models measured on the guide's 8x RTX PRO 5000 72GB box.
+    # Qwen3.8-27B: 64 layers, 24 query heads, 4 KV heads, head_dim 256.
+    "qwen3.8-27b": {"params": 27, "heads": 24, "kv_heads": 4,
+                    "kv_bytes_fp16": 64 * 4 * 256 * 2 * 2},       # 262 144 B
+    # Qwen3-235B-A22B: 94 layers, 64 query heads, 4 KV heads, head_dim 128.
+    "qwen3-235b-a22b": {"params": 235, "heads": 64, "kv_heads": 4,
+                        "kv_bytes_fp16": 94 * 4 * 128 * 2 * 2},   # 192 512 B
+    # MiniMax-M3.1-Flash: 60 layers, 64 query heads, 4 KV heads, head_dim 128.
+    "minimax-m3.1-flash": {"params": 428, "heads": 64, "kv_heads": 4,
+                           "kv_bytes_fp16": 60 * 4 * 128 * 2 * 2},  # 122 880 B
+    # DeepSeek-V4.1-Flash uses MLA, not GQA: the formula above does not apply.
+    # 2.6 KiB/token is the measured compressed KV from the deployment notes
+    # (FP8, MLA); pass --kv-bytes-per-token to override on your own build.
+    "deepseek-v4.1-flash": {"params": 538, "heads": 64, "kv_heads": 1,
+                            "kv_bytes_fp16": 2662},              # measured MLA
 }
 
 KV_BYTES_PER_TOKEN_FP16: Dict[str, int] = {
@@ -802,6 +817,27 @@ def render_gpu_table() -> str:
     return "\n".join(lines)
 
 
+def render_model_table() -> str:
+    lines = ["Built-in models (pass with --model):", ""]
+    lines.append(f"  {'name':<22}{'params':>8}{'heads':>7}{'kv heads':>9}{'kv B/token':>12}  note")
+    lines.append("  " + "-" * 88)
+    notes = {
+        "qwen3.8-27b": "64 layers, head_dim 256",
+        "qwen3-235b-a22b": "MoE, 94 layers",
+        "minimax-m3.1-flash": "MoE, 60 layers; SM120 needs the Marlin workaround",
+        "deepseek-v4.1-flash": "MLA, measured compressed KV; override on your build",
+    }
+    for name in sorted(MODEL_ARCH):
+        a = MODEL_ARCH[name]
+        lines.append(
+            f"  {name:<22}{a['params']:>8.0f}{a['heads']:>7.0f}"
+            f"{a['kv_heads']:>9.0f}{a['kv_bytes_fp16']:>12.0f}  {notes.get(name, '')}"
+        )
+    lines.append("")
+    lines.append("Pass --kv-bytes-per-token when your model is not listed or uses MLA.")
+    return "\n".join(lines)
+
+
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
@@ -833,6 +869,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="measured KV bytes per token; overrides the built-in table")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     ap.add_argument("--list-gpus", action="store_true", help="print the hardware table and exit")
+    ap.add_argument("--list-models", action="store_true", help="print the built-in model table and exit")
     ap.add_argument("--benchmarks", default=None,
                     help="path to a benchmark JSON file or a directory of them "
                          "(e.g. benchmarks/data); loaded entries are attached "
@@ -846,6 +883,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     if args.list_gpus:
         print(render_gpu_table())
+        return 0
+    if args.list_models:
+        print(render_model_table())
         return 0
     if args.goal not in GOAL_SEQS:
         raise SystemExit(f"unknown goal '{args.goal}'. Known values: {', '.join(GOAL_SEQS)}")
@@ -864,10 +904,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     p = plan(args)
+    warnings: List[str] = []
+    if args.gpus.upper().startswith("RTXPRO5000") and args.model.strip().lower() in (
+        "minimax-m3.1-flash", "deepseek-v4.1-flash"
+    ):
+        warnings.append(
+            "SM120 kernel gap: the native NVFP4/MLA paths in current images target "
+            "SM100/SM103. On RTX PRO 5000 (SM120) expect extra patches; see "
+            "recipes/8x-72gb-pcie.md Case C before trusting a launch command."
+        )
     if args.json:
-        print(json.dumps(p.as_dict(), indent=2, ensure_ascii=False))
+        out = p.as_dict()
+        if warnings:
+            out["warnings"] = warnings
+        print(json.dumps(out, indent=2, ensure_ascii=False))
     else:
         print(render_text(p))
+        for w in warnings:
+            print()
+            print("WARNING: " + w)
         if benchmarks:
             print()
             print(render_benchmarks(benchmarks))

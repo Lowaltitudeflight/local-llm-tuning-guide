@@ -14,11 +14,25 @@
 
 但主流推理框架的文档、调优建议和默认配置，几乎都建立在"卡间有高速互联"这个假设上。结果就是：
 
-- 同样 4 张卡，有人跑出 1400 tok/s，有人只有 600 tok/s，差别全在配置
+- 同样 4 张卡，社区报告里吞吐能差 2 倍以上（见[实测数据](benchmarks/zh-CN/README.md)），差别全在配置，不在硅片
 - 中文资料里"讲原理"的文章很多，但**参数建议互相矛盾，且几乎都不说明测试条件**
 - 你无法判断一条建议到底适不适用于你的机器
 
 这个项目要补的是另一半：**把结论和它的适用条件绑在一起。**
+
+## 适合谁
+
+- 你在一台机器上跑 2–8 张卡，走 PCIe，没有 NVLink。
+- 你正在选 TP / PP / EP / 副本、量化或 KV 配置，想要一个带依据的起点。
+- 你手上有一个跑分数字，想知道它能不能迁移到你的机器。
+
+**不适合**：多机 InfiniBand/NVSwitch 集群、训练、以及“哪个模型更聪明”的排行榜。这里讨论的是推理配置，不是模型能力。
+
+## 从这里开始
+
+1. 跑 `python tools/detect_topology.py`，把 JSON 留下来——后面每个决策都以它为输入。
+2. 打开[模型矩阵](MODEL_MATRIX.zh-CN.md)，确认模型能不能放下、需要几张卡。
+3. 找最接近的[配方](recipes/zh-CN/)，复制参数，然后用 [bench/run_matrix.py](bench/run_matrix.py) 实测，不要直接相信默认值。
 
 ## 快速决策表
 
@@ -27,8 +41,8 @@
 | 你的情况 | 建议 | 依据 |
 |---|---|---|
 | 模型（含 KV）能塞进单卡 | **多副本（replicas）优先于张量并行** | 实测 + 可推导 |
-| 模型必须切，且卡在同一 PCIe Switch 下 | TP = 该 Switch 下的卡数 | 可推导 |
-| 卡跨 PCIe Switch 或跨 CPU Socket | **TP 不要跨过去**，改用 TP×PP 组合 | 可推导 |
+| 模型必须切，且卡在同一 PCIe Switch 下 | **先从 TP = 该 Switch 下的卡数起步，再实测**——本机稠密 27B 的反例里，朴素 TP8 反而赢了 TP4 | 实测 + 可推导 |
+| 卡跨 PCIe Switch 或跨 CPU Socket | **默认不要让 TP 跨过去**，改用 TP×PP 或副本；例外存在，要实测 | 可推导 + 实测 |
 | 想要更长上下文 | 先降 KV 精度 / 加卡，DCP 在 PCIe 上收益有限 | 实测 + 可推导 |
 | 想用推测解码提速 | **draft 长度不是越大越好**，从 2–3 开始测 | 实测 |
 | 量化掉点明显 | 检查 MoE 路由层是否被一起量化了 | 实测 |
@@ -43,9 +57,14 @@
 | [04 量化选型](docs/zh-CN/04-quantization.md) | FP8 / MXFP8 / NVFP4 / AWQ 的取舍 | 省显存的代价在哪里 |
 | [05 推测解码](docs/zh-CN/05-speculative.md) | MTP / DFlash / EAGLE 系 | 猜得越多为什么反而越慢 |
 | [06 KV 缓存](docs/zh-CN/06-kv-cache.md) | 显存预算、前缀缓存、长上下文 | 上下文是怎么吃掉显存的 |
-| [配置配方](recipes/zh-CN/) | 按硬件型号的现成配置 | 拿来即用 |
+| [07 排错手册](docs/zh-CN/07-troubleshooting.md) | 症状 → 原因 → 处理 | OOM、输出异常、SM120 内核缺口、容器卡住 |
+| [08 功耗与成本](docs/zh-CN/08-power-cost.md) | 每瓦与每块钱的 token 数 | 300 W 卡为什么停止扩展 |
+| [模型矩阵](MODEL_MATRIX.zh-CN.md) | 72 GB 卡上什么能跑 | 权重、KV/token、最少卡数、已验证配置 |
+| [配置配方](recipes/zh-CN/) | 按硬件型号的现成配置 | [4×72](recipes/zh-CN/4x-72gb-pcie.md) · [8×72](recipes/zh-CN/8x-72gb-pcie.md) · [4×96](recipes/zh-CN/4x-96gb-pcie.md) · [8×24](recipes/zh-CN/8x-24gb-pcie.md) |
 | [实测数据](benchmarks/zh-CN/README.md) | 数据表与测量方法 | 你自己也能填表 |
 | [规划工具](tools/) | 输入硬件 → 输出并行策略 | 命令行 + 离线网页 |
+| [术语表](docs/zh-CN/GLOSSARY.md) | 术语与缩写 | TP / PP / EP / MLA / NVFP4 / SM120 |
+| [文章](articles/) | 长文记录 | 英文摘要 + 中文全文 |
 
 ## 数据可信度分级
 

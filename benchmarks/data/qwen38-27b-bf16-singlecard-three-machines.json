@@ -26,7 +26,12 @@
     "revision": "official release, config sha256 verified identical across machines"
   },
   "workload": {
-    "concurrency": [1, 8, 32, 64],
+    "concurrency": [
+      1,
+      8,
+      32,
+      64
+    ],
     "input_tokens": "1024 (c*) / 32768 (ctx32k) / ShareGPT V3 real distribution",
     "output_tokens": 256,
     "sampling": "temperature 0, seed 42, ignore_eos",
@@ -36,36 +41,63 @@
     {
       "config": "A — RTX 5090 96GB (575 W, ~1792 GB/s)",
       "metrics": {
-        "output_c1_toks": 29.68, "aggregate_c8_toks": 177.58,
-        "aggregate_c32_toks": 434.42, "aggregate_c64_toks": 559.63,
-        "ctx32k_c1_toks": 14.46, "ctx32k_c4_toks": 21.94,
+        "output_c1_toks": 29.68,
+        "aggregate_c8_toks": 177.58,
+        "aggregate_c32_toks": 434.42,
+        "aggregate_c64_toks": 559.63,
+        "ctx32k_c1_toks": 14.46,
+        "ctx32k_c4_toks": 21.94,
         "sharegpt_c64_toks": 900.34
       }
     },
     {
       "config": "B — RTX PRO 6000 Server 96GB (600 W, ~1597 GB/s)",
       "metrics": {
-        "output_c1_toks": 26.10, "aggregate_c8_toks": 182.08,
-        "aggregate_c32_toks": 491.85, "aggregate_c64_toks": 697.91,
-        "ctx32k_c1_toks": 16.67, "ctx32k_c4_toks": 31.66,
+        "output_c1_toks": 26.1,
+        "aggregate_c8_toks": 182.08,
+        "aggregate_c32_toks": 491.85,
+        "aggregate_c64_toks": 697.91,
+        "ctx32k_c1_toks": 16.67,
+        "ctx32k_c4_toks": 31.66,
         "sharegpt_c64_toks": 933.12
       }
     },
     {
       "config": "C — RTX PRO 5000 72GB (300 W)",
       "metrics": {
-        "output_c1_toks": 21.94, "aggregate_c8_toks": 137.42,
-        "aggregate_c32_toks": 300.72, "aggregate_c64_toks": 300.50,
-        "ctx32k_c1_toks": 11.31, "ctx32k_c4_toks": null,
+        "output_c1_toks": 21.94,
+        "aggregate_c8_toks": 137.42,
+        "aggregate_c32_toks": 300.72,
+        "aggregate_c64_toks": 300.5,
+        "ctx32k_c1_toks": 11.31,
+        "ctx32k_c4_toks": null,
         "sharegpt_c64_toks": 483.84
       }
     }
   ],
   "variance": {
     "note": "cache-on means of 3 independent runs per label; CV < 0.5% on C (21.94/21.94/21.94 for c1, 300.67/300.81/300.68 for c32); A/B same protocol, 28 runs on B all rc=0. C measured 2026-10-26 after a same-SKU card swap (c1 21.89 pre-swap vs 21.94 post-swap).",
-    "output_c1_toks": { "C": [21.94, 21.94, 21.94] },
-    "aggregate_c32_toks": { "C": [300.67, 300.81, 300.68] },
-    "aggregate_c64_toks": { "C": [300.98, 300.58, 299.93] }
+    "output_c1_toks": {
+      "C": [
+        21.94,
+        21.94,
+        21.94
+      ]
+    },
+    "aggregate_c32_toks": {
+      "C": [
+        300.67,
+        300.81,
+        300.68
+      ]
+    },
+    "aggregate_c64_toks": {
+      "C": [
+        300.98,
+        300.58,
+        299.93
+      ]
+    }
   },
   "methodology": "vllm bench serve inside the serving container (server and client same host), random dataset, warmups 10 (c*) / 2 (ctx32k), 3 cache-on repeats per label + 1 cache-off pass with --no-enable-prefix-caching",
   "transferable": [
@@ -80,5 +112,6 @@
     "Multi-GPU conclusions: this study is TP1 by design; see qwen38-27b-8x-72gb-pcie-parallelism.json for C-machine 8-GPU results",
     "ctx32k_c4 on C is physically infeasible (KV budget), so C's long-context concurrency behavior is unmeasured",
     "NVLink systems excluded entirely"
-  ]
+  ],
+  "submitted_by": "Lowaltitudeflight"
 }

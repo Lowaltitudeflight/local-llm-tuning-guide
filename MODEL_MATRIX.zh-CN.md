@@ -1,0 +1,33 @@
+# 模型矩阵
+
+这张表回答三个问题：哪些模型真的在本指南覆盖的硬件上跑过、各需要多少显存、证据在哪里。
+
+**怎么读**
+
+- **权重**是磁盘上的 checkpoint 大小，不是单卡占用；除以 TP 只是粗略估算。
+- **KV/token** 默认指整个模型每 token 的开销，标注“实测（每 rank）”的除外。它取决于层数、KV 头数、head_dim 和 KV 精度，只能当预算输入，不是常数。
+- **最少 72 GB 卡数**是“权重 + 一小块 KV”的下限。每卡还要再加 10–30 GB 给 CUDA context、激活、CUDA 图、框架 workspace。刚好“装得下”的配置通常服务不好。
+- **证据**列链接到配方或跑分 JSON；“推导”表示按模型 config 算出来的，不是在本机实测。
+
+| 模型 | 参数（激活） | 量化 | 权重 | KV/token | 最少 72 GB 卡 | 推荐并行 | 证据 |
+|---|---|---:|---:|---:|---:|---|---|
+| Qwen3-8B | 8B | BF16 | ~16 GB | ~128 KiB (fp16) | 1 | 单卡/副本 | 推导 |
+| Qwen3.8-27B | 27B | BF16 | ~52 GB | ~256 KiB (fp16) | 2 | 单 NUMA 节点内 TP2 | [三机单卡研究](benchmarks/zh-CN/README.md) |
+| Qwen3.8-27B | 27B | NVFP4 | ~21 GB | ~64 KiB (fp8 KV) | 1 | 单卡/副本 | 推导 |
+| Qwen3-32B | 32B | BF16 | ~62 GB | ~256 KiB (fp16) | 2 | 单 NUMA 节点内 TP2/TP4 | 推导 |
+| Qwen3-32B | 32B | NVFP4 | ~20 GB | ~64 KiB (fp8 KV) | 1 | 单卡/副本 | 推导 |
+| Qwen3-235B-A22B | 235B (22B) | NVFP4 | ~134 GB | ~64 KiB (fp8 KV) | 3–4 | TP4 + EP4；与 2 副本对比实测 | 推导 |
+| GLM-5.3-Flash | ~355B | FP8 | ~306 GB | ~96 KiB (fp8 KV) | 6–8 | TP8 + EP8 | [GLM TP8+EP8 数据](benchmarks/zh-CN/README.md) |
+| GLM-5.3-Flash | ~355B | NVFP4 | ~190 GB | ~96 KiB (fp8 KV) | 4–6 | TP4/TP8 + EP；实测 | 推导 |
+| MiniMax-M3.1-Flash | 428B (23B) | MXFP8 + NVFP4 专家 | ~252 GB | **~7.5 KiB 实测（每 rank，fp8）** | 8 | SM120：TP8 + Marlin；SM100：TP8 + MegaMoE | [8×72 配方方案 C](recipes/zh-CN/8x-72gb-pcie.md#方案-c大-nvfp4-moeminimax-m31-flash252-gbsm120-绕行方案) · [JSON](benchmarks/data/minimax-m31-flash-8x72-sm120.json) |
+| DeepSeek-V4.1-Flash-1017 | 538B 级 | FP8 + FP4 专家 | ~510 GB（476 GiB） | ~2.6 KiB（MLA，fp8） | 8 | TP8 + EP8；Engram 表放主机内存 | 见[私有化部署手册](https://gitee.com/wang-guangshuooo/llm-private-deploy-handbook) |
+
+## 这张表想避免什么
+
+1. **“能装进单卡”不等于“单卡能服务”。** 52 GB 的 checkpoint 放在 72 GB 卡上，只剩约 20 GB 给 KV、激活和图；长上下文或并发一样会 OOM。
+2. **252 GB 的模型装不进 4 张 72 GB 卡。** 每卡 63 GB 权重，只剩 8–12 GB，连运行时开销都不够。见 [4×72 配方](recipes/zh-CN/4x-72gb-pcie.md)。
+3. **MoE 不是“换了个名字的稠密模型”。** 专家并行、router 精度、all-to-all 会同时改变显存布局和最优 TP/EP 组合。
+
+## 怎么加一行
+
+用 [benchmark report 模板](https://github.com/Lowaltitudeflight/local-llm-tuning-guide/issues/new?template=benchmark-report.yml)，或直接提 PR 新增符合 `lltg.benchmark.v1` 的 `benchmarks/data/*.json`。如果只有“装不下”的结果，也算一行——把 OOM 日志放进 [4×72 配方](recipes/zh-CN/4x-72gb-pcie.md) 的负面列。

@@ -30,7 +30,7 @@
 nvidia-smi topo -m
 ```
 
-针对这种拓扑的决策规则（见 [02 并行策略](../02-parallelism.md)）：
+针对这种拓扑的决策规则（见 [02 并行策略](../../docs/zh-CN/02-parallelism.md)）：
 
 | 观察结果 | 并行方式 |
 |---|---|
@@ -80,6 +80,47 @@ python -m sglang.launch_server \
 
 用 `CUDA_VISIBLE_DEVICES=0,1,2,3`（NUMA0）或 `4,5,6,7`（NUMA1）配 TP=4，不开 PP。每 token 路径最简单最快。
 
+### 方案 C：大 NVFP4 MoE（MiniMax-M3.1-Flash，252 GB）——SM120 绕行方案
+
+252 GB 的模型装不进 4 张 72 GB 卡，必须用满 8 张。镜像的 NVFP4 原生路径面向 SM100/SM103，在 SM120（RTX PRO 5000）上需要三个只读补丁加显式参数。2026-11-02 已在本快照机器上验证。
+
+```bash
+sglang serve \
+  --model-path /models2/MiniMax-M3.1-Flash \
+  --trust-remote-code \
+  --tp 8 \
+  --attention-backend triton \
+  --chunked-prefill-size 2048 \
+  --mem-fraction-static 0.85 \
+  --context-length 1048576 \
+  --cuda-graph-backend-prefill disabled \
+  --cuda-graph-max-bs-decode 128 \
+  --host 0.0.0.0 --port 8200
+```
+
+需要的改动（用只读挂载覆盖镜像内文件，不要改镜像）：
+
+| 文件 | 改动 | 原因 |
+|---|---|---|
+| `srt/configs/model_config.py` | 在 SM120 上让 `uses_minimax_m3_nvfp4_native_stack` 返回 False | 原生 MSA-v1 decode indexer 要求 SM100/SM103 |
+| `srt/arg_groups/model_overrides/minimax_m3.py` | 在 SM120 上走非 Blackwell 分支 | 绕开硬编码到 SM100/103 的 MegaMoE |
+| `srt/layers/quantization/minimax_m3_nvfp4.py` | `use_marlin = not is_blackwell or is_sm120` | SM120 上只剩 Marlin 这条 NVFP4 MoE 路径 |
+
+另外：**不要传 `--quantization`**——必须让 SGLang 自动识别成 `minimax_m3_nvfp4`；强制 `mxfp8` 会把打包的 NVFP4 专家按 FP8 加载，报 192 vs 384 的张量尺寸错误。
+
+本机实测（vLLM bench，OpenAI completions，输入 1024 / 输出 256，seed 42，cache-on 3 次均值）：
+
+| 配置 | C1 单流 | C8 聚合 | C32 聚合 | C64 聚合 | ShareGPT C64 |
+|---|---:|---:|---:|---:|---:|
+| TP8 + Marlin（本方案） | 94.4 tok/s | 489.8 tok/s | 740.4 tok/s | **1060.8 tok/s** | **1093.8 tok/s** |
+
+长上下文与显存：
+
+- `--mem-fraction-static 0.85` 时 KV 池 1,329,280 token；每卡占用 67.7–72.3 GB。
+- 1M 上下文下，冷启动 999,988 token 请求 **517.7 秒**完成，无 OOM；1,047,992 token 的边界请求也成功。
+- 1M 请求占 KV 池约 79%，同一时间基本只能跑 1 条；1M 配置的 C64 吞吐为 815.7 tok/s，比 128K 低约 23%。
+- 完整数据与方法：[`benchmarks/data/minimax-m31-flash-8x72-sm120.json`](../../benchmarks/data/minimax-m31-flash-8x72-sm120.json)。
+
 ## 第一方实测数据（2026-10-23，稠密 27B）
 
 在快照机器上用 [sglang 0.5.22](../../benchmarks/data/qwen38-27b-8x-72gb-pcie-parallelism.json) 实测——Qwen3.8-27B BF16，输入 4096 / 输出 512 token，每次冷启动换新容器：
@@ -93,7 +134,7 @@ python -m sglang.launch_server \
 结论（复用前先看 JSON 的 `transferable` / `not_transferable`）：
 
 - **朴素 TP8 赢了。** 在这个模型规模上，算力扩展的收益大于跨路 all-reduce 的代价——"绝不跨 `SYS`"的经验法则对稠密 27B 不成立。
-- **DP-attention 把 C1 吞吐砍半。** 并发 1 时大部分 DP rank 闲置，权重却按 8 份切开。这是面向 MoE 的布局（本机上 MiniMax M3.1 的启动脚本就是这么配的），不是稠密模型的默认选项。
+- **DP-attention 把 C1 吞吐砍半。** 并发 1 时大部分 DP rank 闲置，权重却按 8 份切开。这是 SM100 上面向 MoE 的布局；本机 SM120 上的 M3.1 走的是 TP8 + Marlin（方案 C），不是 DP-attention。
 - 单 NUMA 节点 TP4 用一半硬件保住了 TP8 约 89% 的 C1 吞吐——另外 4 张卡要挪作他用时这是正确选择。
 
 ## 已知局限与待验证问题
@@ -103,6 +144,6 @@ python -m sglang.launch_server \
 | 上面的拓扑、CPU/内存、驱动/CUDA/NCCL 数值 | **已实测**（第一方快照，2026-10-23） |
 | TP8 vs 单节点 TP4 vs TP8+DP-attention（稠密 27B，BF16） | **已实测**——朴素 TP8 最快（见上表） |
 | TP4 × PP2 vs TP8（需要 >4 卡余量的模型） | **未验证**——本轮未测试 sglang 的 PP |
-| 该拓扑上的 MoE 模型（DP-attention + EP，M3.1 布局） | **未验证**——MiniMax M3.1-Flash NVFP4 目前无法在 SM120 启动（其 MSA decode indexer 内核要求 SM100/SM103，硬件属主正在移植） |
+| 该拓扑上的 MoE 模型（DP-attention + EP，M3.1 布局） | **MiniMax-M3.1-Flash NVFP4 已用 Marlin 绕行方案实测通过（方案 C）**；DP-attention/EP 布局本身在 SM120 上仍未验证 |
 | NUMA 绑核（`numactl --cpunodebind`）是否提升吞吐 | **未验证** |
-| 这台机器上 NCCL 是否需要调参（如 `NCCL_P2P_DISABLE`） | **未验证**（见 [03 通信](../03-communication.md)） |
+| 这台机器上 NCCL 是否需要调参（如 `NCCL_P2P_DISABLE`） | **未验证**（见 [03 通信](../../docs/zh-CN/03-communication.md)） |
