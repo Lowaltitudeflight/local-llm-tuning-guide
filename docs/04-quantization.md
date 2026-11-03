@@ -9,7 +9,7 @@ The table below describes only the relative size of the **weights**; actual VRAM
 | Format | Weight quantization | Activation quantization | Approx. weight share | Hardware requirement |
 |---|---|---|---|---|
 | BF16 / FP16 | 16 bit | 16 bit | 100% (baseline) | Everything |
-| FP8 (E4M3/E5M2) | 8 bit | 8 bit | ~50% | Hopper and newer |
+| FP8 (E4M3/E5M2) | 8 bit | 8 bit | ~50% | Ada (SM89) and newer — A100 (SM80) has no FP8 tensor cores |
 | MXFP8 | 8 bit (microscaling) | 8 bit | ~50% | Native on Blackwell |
 | AWQ / GPTQ | 4 bit | 16 bit | ~30% | Anything with the matching kernels |
 | W4A8 | 4 bit | 8 bit | ~30% | Depends on kernel support |
@@ -19,29 +19,35 @@ The table below describes only the relative size of the **weights**; actual VRAM
 
 **Basis: derivable**
 
-## 4.2 MoE models: protect the router first
+## 4.2 MoE models: activations first, router second
 
 MoE models carry a specific risk: **when the router picks the wrong expert, the output goes off the rails entirely**, and this failure is not masked by the "average error" of weight quantization — it is discrete and discontinuous.
 
-Published research (Local Inference Lab's quantization report on GLM-5.3-Flash) specifically compared:
+Local Inference Lab's quantization report on GLM-5.3-Flash isolates the two levers people usually conflate. The metric is **greedy checksum stability**: the same prompt, temperature 0, does the answer hash stay the same.
 
-- Three activation precisions: **W4A4 / W4A8 / W4A16**
-- The effect of keeping **FP32 router weights**
-- The metrics of interest were **greedy checksum stability** (does the same input reliably produce the same output) and **the speed cost**
+| Change | Greedy checksum failure rate |
+|---|---|
+| QAD checkpoint, W4A4 activations (framework default) | **5.9%** (41/700) |
+| QAD checkpoint, **W4A16 activations** (`VLLM_B12X_MOE_FP4_FORCE_A16=1`) | **0%** (0/500) |
+| QAD checkpoint, W4A16 + **FP32 router** | 0% (n=500) — router not needed here, and no measurable runtime cost |
+| pre-QAD checkpoint, W4A16, BF16 router | 19.5% |
+| pre-QAD checkpoint, W4A16, **FP32 router** | **4.0%** (n=200) |
 
-Its conclusion points one way: the more aggressively activations are quantized, the harder output determinism becomes to guarantee for MoE; keeping the router weights at higher precision is a very cost-effective step.
+Two conclusions, and the order matters:
 
-> See the original report for the concrete numbers; this project does not republish unverified figures.
+1. **Activation precision is the primary lever.** Moving from W4A4 to W4A16 alone took the failure rate from 5.9% to 0. If you serve an MoE model with 4-bit activations and see non-deterministic output, raise activations to A16 *first* — keeping a high-precision router while leaving activations at A4 does not fix it.
+2. **FP32 router weights are a free secondary safeguard, but checkpoint-dependent.** On the QAD checkpoint they changed nothing (0/500 either way); on the pre-QAD checkpoint they cut 19.5% → 4.0%. They add no measurable throughput cost: the router-weight multiply moves from the FC2 epilogue into the FP32 top-k sum, and the arithmetic is the same.
 
-**Basis: measured** (source: local-inference-lab/rtx6kpro, the `checksum-stability-moe-activations` report)
+**Basis: measured** (source: local-inference-lab/rtx6kpro, `models/glm-5.3-flash/checksum-stability-moe-activations.md`; failure counts are the report's own n)
 
 **Practical recommendations**:
 
 | Priority | Action |
 |---|---|
-| 1 | Keep router weights in FP32, or at least BF16 |
-| 2 | Expert weights can be quantized more aggressively |
-| 3 | Start activations at A16, and only lower it after confirming no loss |
+| 1 | Keep activations at **A16** unless a checksum-stability test says otherwise |
+| 2 | Only lower activation precision after running that test on your checkpoint |
+| 3 | Keep router weights in FP32 or BF16 — no measurable cost, and it is the difference on pre-QAD checkpoints |
+| 4 | Expert weights can be quantized more aggressively than either |
 
 ## 4.3 How to verify quantization didn't cost you
 

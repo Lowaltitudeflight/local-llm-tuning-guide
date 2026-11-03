@@ -21,7 +21,7 @@ The planner feeds existing measured data directly into its planning output.
 | 8 × RTX PRO 5000 72GB (PCIe, dual NUMA, no NVLink) | Qwen3.8-27B BF16 | TP8 + DP-attention 8 | 37.7 tok/s | 233.6 tok/s | Lowaltitudeflight | [JSON](data/qwen38-27b-8x-72gb-pcie-parallelism.json) |
 | 8 × RTX PRO 5000 72GB (PCIe, dual NUMA, no NVLink) | Qwen3.8-27B BF16 | TP4 (one NUMA node) | 64.2 tok/s | 314.5 tok/s | Lowaltitudeflight | [JSON](data/qwen38-27b-8x-72gb-pcie-parallelism.json) |
 
-Measured 2026-10-23, input 4096 / output 512 tokens, sglang 0.5.22. Key finding: for this dense model, naive TP8 beat both alternatives — see the JSON's `transferable` / `not_transferable` fields before reusing the ranking. Contributions of measurements from your own machines are welcome — **an empty cell is far more useful than a made-up number**.
+Measured 2026-10-23, input 4096 / output 512 tokens, sglang 0.5.22. Key finding: for this dense model, naive TP8 had the highest single-instance throughput — but it used **8 cards against TP4's 4**, and TP4 was 1.7× better per GPU. See the JSON's per-config notes before reusing the ranking — see the JSON's `transferable` / `not_transferable` fields before reusing the ranking. Contributions of measurements from your own machines are welcome — **an empty cell is far more useful than a made-up number**.
 
 ### Single-card BF16 study across three Blackwell SKUs (2026-10-26)
 
@@ -29,7 +29,7 @@ Qwen3.8-27B BF16, TP1, vLLM 0.32.0 same digest, input 1024 / output 256 ([JSON](
 
 | Machine | c1 | c8 | c32 | c64 | 32K c1 | ShareGPT c64 |
 |---|---:|---:|---:|---:|---:|---:|
-| A: RTX 5090 96GB (575 W, ~1792 GB/s) | 29.68 | 177.58 | 434.42 | 559.63 | 14.46 | 900.34 |
+| A: RTX 5090 96GB (modded, not a retail 32 GB card; 575 W, ~1792 GB/s) | 29.68 | 177.58 | 434.42 | 559.63 | 14.46 | 900.34 |
 | B: RTX PRO 6000 Server 96GB (600 W, ~1597 GB/s) | 26.10 | 182.08 | 491.85 | 697.91 | 16.67 | 933.12 |
 | C: RTX PRO 5000 72GB (300 W) | 21.94 | 137.42 | **300.72** | **300.50** | 11.31 | 483.84 |
 
@@ -53,7 +53,7 @@ Key finding: A leads 7-16% despite B's higher compute — memory bandwidth and s
 | Configuration | C1 output | C8 aggregate | C32 aggregate | C64 aggregate | ShareGPT C64 |
 |---|---:|---:|---:|---:|---:|
 | TP8 + Marlin (SM120) | 94.4 | 489.8 | 740.4 | **1060.8** | **1093.8** |
-| Cache off, C64 (1 run) | — | 383.3 | 588.3 | **821.0** | 1084.1 |
+| Prefix cache off (1 run; all concurrency levels) | — | 383.3 | 588.3 | **821.0** | 1084.1 |
 
 Key findings:
 

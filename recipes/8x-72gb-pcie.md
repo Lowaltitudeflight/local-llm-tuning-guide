@@ -135,7 +135,7 @@ Takeaways (see the JSON's `transferable` / `not_transferable` before reusing):
 
 - **Naive TP8 won.** At this model size, compute scaling beats the cross-socket all-reduce penalty — the "never cross `SYS`" heuristic did not pay off for a dense 27B.
 - **DP-attention halved C1 throughput.** At concurrency 1, most DP ranks idle while weights stay partitioned 8 ways. It is an MoE-oriented layout on SM100; on this SM120 box the MiniMax M3.1 path uses TP8 + Marlin (Case C), not DP-attention.
-- TP4 on one NUMA node kept ~89% of TP8 C1 with half the hardware — the right choice when the other 4 GPUs are needed elsewhere.
+- TP4 on one NUMA node kept **85.3%** of TP8's C1 throughput (64.2 vs 75.3) and 89.3% of its C8 aggregate (314.5 vs 352.4) — with **half the cards**, so its throughput per GPU is **1.7× higher** (16.05 vs 9.41 tok/s/GPU at C1). TP8 buys a single-instance peak; TP4 buys efficiency. Default to TP4 unless one instance's peak matters.
 
 ## Known limitations and open questions
 

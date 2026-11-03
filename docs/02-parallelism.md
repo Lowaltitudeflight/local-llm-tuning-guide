@@ -54,9 +54,11 @@ Starting from the example topology in chapter 01 (GPU0/1/2 at `PIX`, GPU3 at `SY
 | Configuration | Verdict |
 |---|---|
 | TP=4 | ❌ Every all-reduce step hits the slowest link |
-| TP=3 | ✅ Stays entirely within the switch |
+| TP=3 | ❌ Usually illegal: TP must divide attention heads **and** KV heads, and 4 KV heads ÷ 3 is not an integer. GPU2 is also on `PXB`, not the same switch as GPU0/1 |
 | TP=2 × PP=2 | ✅ TP stays on the fast links; PP only passes activations at stage boundaries |
 | Two TP=2 replicas | ✅ Provided the model fits on 2 GPUs |
+
+**Choose TP from the divisors, not from the topology.** A TP value the engine rejects is a crash, not a slow configuration. Compute the legal set first (`attention heads % TP == 0 and kv_heads % TP == 0`), then pick the largest legal value that stays inside one switch.
 
 ## 2.4 When "adding GPUs makes it slower"
 

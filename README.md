@@ -44,11 +44,11 @@ Six highest-frequency questions, answered first.
 | Your situation | Recommendation | Basis |
 |---|---|---|
 | Model (plus KV) fits on one GPU | **Prefer replicas over tensor parallelism** | Measured + derivable |
-| Model must be split; all GPUs under one PCIe switch | **Start with TP = GPUs under that switch, then measure** — a dense 27B counterexample on this box beat TP4 with naive TP8 | Measured + derivable |
-| GPUs span PCIe switches or CPU sockets | **Avoid letting TP cross that boundary by default** — use TP × PP or replicas; exceptions exist, measure | Derivable + measured |
+| Model must be split; all GPUs under one PCIe switch | **Start with TP = GPUs under that switch, then measure.** On the 8×72 box TP8 beat TP4-on-one-node by 12% aggregate — but it used **2× the cards**; TP4 was **1.7× better per GPU** | Measured |
+| GPUs span PCIe switches or CPU sockets | **Avoid letting TP cross that boundary by default** — use TP × PP or replicas. The same box measured one exception (TP8 across SYS still beat TP4-on-node); treat this as a default, not a law | Derivable + measured |
 | You want a longer context | Lower KV precision or add GPUs first; DCP gains little over PCIe | Measured + derivable |
-| You want speculative decoding for speed | **Longer drafts are not better** — start at 2–3 and measure | Measured |
-| Quantization hurts output quality | Check whether the MoE router was quantized along with the experts | Measured |
+| You want speculative decoding for speed | **Longer drafts are not automatically better** — start at 2–3. The published 19–22% gap compares MTP3 with DFlash2-K7, which differ in draft method too | Measured (confounded) |
+| Quantization hurts output quality | **Raise activation precision first** — W4A4 → W4A16 took checksum failures from 5.9% to 0. FP32 router weights are a free second safeguard | Measured |
 
 ## Contents
 
@@ -92,8 +92,8 @@ Six of the highest-confidence judgements, expanded in the chapters.
 1. **If it fits on one GPU, do not use tensor parallelism.** Two independent replicas have zero inter-GPU communication and scale throughput linearly; TP all-reduces at every layer, and over PCIe that cost eats most of the gain.
 2. **The boundary for TP is the PCIe switch, not the GPU count.** Traffic crossing switches goes through CPU memory with a sharp latency penalty. With four GPUs split across two switches, TP=4 is often worse than TP=2 × PP=2 — sometimes worse than two TP=2 replicas.
 3. **Over PCIe, prefer one-shot all-reduce.** The two-shot scheme is superior on a fast interconnect, but that superiority assumes ample bandwidth. PCIe is the opposite case.
-4. **Speculative decoding gains are bandwidth-bound.** A longer draft wastes more compute per failed verification, and the draft model itself consumes bandwidth. On a PCIe host, three draft tokens can be meaningfully faster than seven.
-5. **Protect the router when quantizing.** In MoE models the expert weights can be quantized aggressively, but a router that picks the wrong expert destroys the output. Keeping the router at higher precision costs far less than it saves.
+4. **Speculative decoding gains are bandwidth-bound.** A longer draft wastes more compute per failed verification, and the draft model itself consumes bandwidth. The published comparison (MTP3 vs DFlash2-K7) shows the shorter draft ahead by 19–22%, but the two configurations also differ in draft method and weights — read it as "measure both", not "7 is always worse than 3".
+5. **Raise activation precision before touching the router.** In MoE models, W4A4 → W4A16 alone took greedy-checksum failures from 5.9% to 0. Keeping FP32 router weights costs no measurable throughput and is the difference on pre-QAD checkpoints (19.5% → 4.0%), but it does not substitute for A16 activations.
 6. **On one machine, configuration alone accounts for more than a 2× throughput difference.** This is not folklore — every parameter is either aligned with your real topology or fighting it.
 
 ## How to use this
@@ -113,8 +113,8 @@ layout — each tagged with an evidence grade. See [tools/README.md](tools/READM
 
 ## Related projects
 
-- [llm-inference-bench](https://gitee.com/wang-guangshuooo/llm-inference-bench) — the companion benchmarking platform that produces the data this project consumes
-- [llm-private-deploy-handbook](https://gitee.com/wang-guangshuooo/llm-private-deploy-handbook) — delivery process handbook for private deployments
+- [llm-inference-bench](https://github.com/Lowaltitudeflight/llm-inference-bench) — the companion benchmarking platform that produces the data this project consumes
+- [llm-private-deploy-handbook](https://github.com/Lowaltitudeflight/llm-private-deploy-handbook) — delivery process handbook for private deployments
 
 ## License
 

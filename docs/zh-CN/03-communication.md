@@ -26,10 +26,10 @@
 
 公开的 PCIe 优化实践（Local Inference Lab 的 GLM-5.3-Flash 配置）中有两点值得参考：
 
-1. **默认关闭两阶段 all-reduce** —— 其配置文档明确写着 "Two-shot all-reduce is off"，目标配置走单步路径。
-2. **提供了按消息大小切换的阈值** —— 配置项里存在 `VLLM_PCIE_TWOSHOT_ALLREDUCE_MAX_SIZE` 这类参数，说明这个选择不是全局一刀切，而是随消息规模变化的。
+1. **两阶段 all-reduce 是关闭的** —— 其配置文档明确写着 "Two-shot all-reduce is off"，目标配置走单步路径。
+2. **开关存在，但交叉点未知。** 同一份配置里确实有 `VLLM_PCIE_TWOSHOT_ALLREDUCE_MAX_SIZE`，但它的值是 `off`。参数存在只说明这个取舍与消息大小有关，**不说明交叉点在哪**；本项目也没有在 PCIe 上测过它。
 
-第 2 点比第 1 点更有启发：**结论不是一个算法，而是一个阈值。**
+所以诚实的读法是：**PCIe 场景默认走 one-shot。** 交叉点值得在你自己的机器上找，但它是一个 **Open** 问题，不是一个已发布的数字——不要从一个根本没设值的配置里抄阈值。
 
 > 该项目的目标是 4 张 PCIe 卡（无 NVLink）运行 NVFP4 量化的 MoE 模型，TP=4。其配置可作为 4 卡 PCIe 场景的参考起点。
 

@@ -9,7 +9,7 @@
 | 格式 | 权重量化 | 激活量化 | 权重大致占比 | 硬件要求 |
 |---|---|---|---|---|
 | BF16 / FP16 | 16 bit | 16 bit | 100%（基准） | 全部 |
-| FP8 (E4M3/E5M2) | 8 bit | 8 bit | ~50% | Hopper 及以后 |
+| FP8 (E4M3/E5M2) | 8 bit | 8 bit | ~50% | Ada（SM89）及以后；A100（SM80）没有 FP8 tensor core |
 | MXFP8 | 8 bit（微缩放） | 8 bit | ~50% | Blackwell 原生 |
 | AWQ / GPTQ | 4 bit | 16 bit | ~30% | 有对应内核即可 |
 | W4A8 | 4 bit | 8 bit | ~30% | 依赖内核支持 |
@@ -19,29 +19,35 @@
 
 **依据：可推导**
 
-## 4.2 MoE 模型：先保护路由层
+## 4.2 MoE 模型：先管激活，再管路由
 
 MoE 模型有一个特殊风险：**路由器选错专家，输出会被彻底带偏**，而这个错误不会被权重量化的"平均误差"掩盖——它是离散的、跳变式的。
 
-公开研究（Local Inference Lab 对 GLM-5.3-Flash 的量化报告）专门比较了：
+Local Inference Lab 对 GLM-5.3-Flash 的量化报告把大家常混为一谈的两个杠杆拆开了。指标是 **greedy checksum 稳定性**：同一个 prompt、temperature 0，回答的哈希是否稳定不变。
 
-- **W4A4 / W4A8 / W4A16** 三种激活精度
-- **FP32 router 权重**的影响
-- 关注指标是 **greedy checksum 稳定性**（相同输入是否稳定产生相同输出）和**速度代价**
+| 改动 | checksum 失败率 |
+|---|---|
+| QAD checkpoint，W4A4 激活（框架默认） | **5.9%**（41/700） |
+| QAD checkpoint，**W4A16 激活**（`VLLM_B12X_MOE_FP4_FORCE_A16=1`） | **0%**（0/500） |
+| QAD checkpoint，W4A16 + **FP32 router** | 0%（n=500）——这里不需要，且没有可测量的运行时开销 |
+| pre-QAD checkpoint，W4A16，BF16 router | 19.5% |
+| pre-QAD checkpoint，W4A16，**FP32 router** | **4.0%**（n=200） |
 
-其结论指向：激活量化越激进，MoE 的输出确定性越难保证；把路由器权重保持在更高精度，是性价比很高的一步。
+两条结论，顺序很重要：
 
-> 具体数值请查阅其原始报告；本项目不转述未经核实的数字。
+1. **激活精度才是主杠杆。** 只把 W4A4 换成 W4A16，失败率就从 5.9% 降到 0。如果你在用 4-bit 激活跑 MoE 并看到非确定性输出，**先把激活提到 A16**——只保 router 精度、激活继续用 A4，是修不好的。
+2. **FP32 router 权重是免费的二次保险，但依赖 checkpoint。** 在 QAD checkpoint 上它没有区别（两种情况都是 0/500）；在 pre-QAD checkpoint 上把 19.5% 压到 4.0%。它不带来可测量的吞吐代价：router 权重的乘法只是从 FC2 epilogue 挪进 FP32 top-k 求和，计算量不变。
 
-**依据：实测**（来源：local-inference-lab/rtx6kpro，`checksum-stability-moe-activations` 报告）
+**依据：实测**（来源：local-inference-lab/rtx6kpro，`models/glm-5.3-flash/checksum-stability-moe-activations.md`；失败计数用报告自己的 n）
 
 **实践建议**：
 
 | 优先级 | 做法 |
 |---|---|
-| 1 | 路由器权重保持 FP32 或至少 BF16 |
-| 2 | 专家权重可以更激进量化 |
-| 3 | 激活精度从 A16 起步，确认无损后再降 |
+| 1 | 激活保持 **A16**，除非 checksum 稳定性测试证明可以降 |
+| 2 | 只有在自己的 checkpoint 上跑过该测试，才下调激活精度 |
+| 3 | router 权重保持 FP32 或 BF16——没有可测量代价，且它是老 checkpoint 上的差别所在 |
+| 4 | 专家权重可以比这两者都更激进地量化 |
 
 ## 4.3 怎么验证量化没有亏本
 

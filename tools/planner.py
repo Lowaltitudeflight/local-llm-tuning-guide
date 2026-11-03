@@ -132,10 +132,13 @@ GPU_SPECS: Dict[str, Dict[str, object]] = {
     },
     "RTX3090-24": {
         "vram_gb": 24, "link": "pcie", "link_bw_gbs": 64,
-        "scaling": 0.75, "consumer": True,
-        "note": "PCIe Gen4 x16; peer-to-peer access is restricted by the driver",
+        "scaling": 0.75, "consumer": False,
+        "note": "PCIe Gen4 x16; Ampere, so PCIe peer-to-peer works and an NVLink "
+                "bridge is optional. Unlike RTX 40/50 consumer cards it is not "
+                "driver-restricted; 4x TP4 has been measured on this class.",
         "grade": MEASURED,
-        "source": "public multi-GPU scaling catalogue (0.75x per-GPU efficiency)",
+        "source": "public multi-GPU scaling catalogue (0.75x per-GPU efficiency); "
+                  "P2P support is an Ampere property, not a 40-series one",
     },
     "RTXPRO5000-72": {
         "vram_gb": 72, "link": "pcie", "link_bw_gbs": 128,
@@ -400,6 +403,29 @@ def tp_ceiling(spec: Dict[str, object], group: int, count: int,
             "size; anything beyond that must go through pipeline parallelism."
         )
         grade = DERIVABLE
+    elif link == "pcie":
+        # A known PCIe-only SKU: the link is documented, the topology of *this*
+        # board is not. Capping at 2 here used to make the tool contradict the
+        # guide's own measurements - the 8x RTX PRO 5000 reference box ran TP8
+        # across two NUMA nodes and beat TP4-on-one-node. So the ceiling depends
+        # on whether the caller told us the per-switch group size.
+        max_tp = int(spec.get("max_tp", 8))
+        if group:
+            ceiling = max(1, min(count, group, max_tp))
+            reason = (
+                f"PCIe only, no NVLink ({bw} GB/s); TP capped at the {ceiling} GPUs "
+                f"in one switch/NUMA group. Crossing that boundary goes through SYS."
+            )
+            grade = DERIVABLE
+        else:
+            ceiling = max(1, min(count, max_tp))
+            reason = (
+                f"PCIe only, no NVLink ({bw} GB/s); topology not supplied. TP up to "
+                f"{ceiling} is allowed - on the 8x72 reference box naive TP8 across "
+                f"two NUMA nodes beat TP4-on-one-node. Pass --group <n> to cap TP at "
+                f"one switch, and measure before committing."
+            )
+            grade = OPEN
     else:
         ceiling = min(count, 2)
         reason = (

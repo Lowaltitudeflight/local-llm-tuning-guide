@@ -8,7 +8,7 @@
     "gpus": "4 x RTX 3090",
     "vram_gb_per_gpu": 24,
     "power_limit": null,
-    "interconnect": "PCIe Gen4 x16 (no NVLink; consumer driver restricts P2P)",
+    "interconnect": "PCIe Gen4 x16, no NVLink bridge fitted. Ampere (3090) is not subject to the RTX 40/50 P2P restriction; verify P2P on your board with a bandwidth test, since firmware and BIOS settings can still disable it.",
     "topology_summary": null,
     "cpu_numa": null
   },

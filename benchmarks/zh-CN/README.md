@@ -21,7 +21,7 @@ planner 会把已有实测数据直接带进规划输出。
 | 同上 | Qwen3.8-27B BF16 | TP8 + DP-attention 8 | 37.7 tok/s | 233.6 tok/s | Lowaltitudeflight | 同上 |
 | 同上 | Qwen3.8-27B BF16 | TP4（单 NUMA 节点） | 64.2 tok/s | 314.5 tok/s | Lowaltitudeflight | 同上 |
 
-2026-10-23 实测，输入 4096 / 输出 512，sglang 0.5.22。关键结论：这个稠密模型上朴素 TP8 反而最快——复用前先看 JSON 的 `transferable` / `not_transferable`。
+2026-10-23 实测，输入 4096 / 输出 512，sglang 0.5.22。关键结论：这个稠密模型上朴素 TP8 的单实例吞吐最高——但它用了 **8 张卡，TP4 只用了 4 张**，且 **TP4 的每卡效率是 TP8 的 1.7 倍**。复用排名前先看 JSON 里每个配置的备注和 `not_transferable`。
 
 ### 三台 Blackwell 单卡 BF16 对比（2026-10-26）
 

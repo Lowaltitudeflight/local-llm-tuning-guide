@@ -26,10 +26,10 @@ So the right question is not "which algorithm is better" but "how large are the 
 
 Two points from public PCIe optimization practice (Local Inference Lab's GLM-5.3-Flash configuration) are worth studying:
 
-1. **Two-stage all-reduce disabled by default** — its configuration documentation states explicitly that "Two-shot all-reduce is off"; the target configuration takes the one-shot path.
-2. **A message-size threshold for switching modes** — its configuration exposes a parameter like `VLLM_PCIE_TWOSHOT_ALLREDUCE_MAX_SIZE`, which shows this is not a one-size-fits-all choice but one that changes with message size.
+1. **Two-stage all-reduce is switched off** — its configuration documentation states explicitly that "Two-shot all-reduce is off", and the target configuration takes the one-shot path.
+2. **The knob exists; the crossover does not.** The same configuration exposes `VLLM_PCIE_TWOSHOT_ALLREDUCE_MAX_SIZE`, but its value there is `off`. The parameter's existence tells you the trade-off is message-size dependent. It does not tell you where the crossover sits, and this project has not measured it on PCIe.
 
-Point 2 is more instructive than point 1: **the takeaway is not an algorithm, it's a threshold.**
+So the honest reading is: **on PCIe, default to one-shot.** The threshold is worth finding on your own machine, but it is an **Open** question, not a published number — do not copy a value from a configuration that never set one.
 
 > That project targets 4 PCIe GPUs (no NVLink) running an NVFP4-quantized MoE model at TP=4. Its configuration is a reasonable starting reference for the 4-GPU PCIe scenario.
 

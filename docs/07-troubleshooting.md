@@ -18,7 +18,7 @@ with the same evidence grades used elsewhere: **Measured**, **Derivable**, or
 
 | Symptom | Likely cause | Check | Fix | Grade |
 |---|---|---|---|---|
-| Fluent but wrong / garbled answers | Quantization mismatch, especially MoE router quantized with experts | Compare output with the unquantized model; check the quant config | Keep the router at higher precision; re-quantize experts only | Measured |
+| Fluent but wrong / garbled answers | MoE activations quantized too aggressively, sometimes plus a quantized router | Run a greedy checksum test (same prompt, temperature 0, repeat 50+ times); check the quant config for activation precision | **Raise activations to A16 first** (W4A4 → A16 measured 5.9% → 0% failures); keep the router at FP32/BF16 as a free second safeguard | Measured |
 | Expert weights fail to load with a 2× size mismatch | Packed FP4/NVFP4 experts loaded as FP8 | Error like `size of tensor a (192) must match ... (384)` | Do not force `--quantization`; let the framework auto-detect the packed format | Measured |
 | Empty `content` with a reasoning model | All output tokens were spent on `reasoning_content` | Inspect the raw response | Raise `max_tokens`; enable the framework’s reasoning parser; for chat UIs, render reasoning separately | Measured |
 | HTTP 404 for the model name | Client sends a different id than the server exposes | `GET /v1/models` | Set `--served-model-name` or use the exact id | Derivable |

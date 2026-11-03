@@ -41,11 +41,11 @@
 | 你的情况 | 建议 | 依据 |
 |---|---|---|
 | 模型（含 KV）能塞进单卡 | **多副本（replicas）优先于张量并行** | 实测 + 可推导 |
-| 模型必须切，且卡在同一 PCIe Switch 下 | **先从 TP = 该 Switch 下的卡数起步，再实测**——本机稠密 27B 的反例里，朴素 TP8 反而赢了 TP4 | 实测 + 可推导 |
-| 卡跨 PCIe Switch 或跨 CPU Socket | **默认不要让 TP 跨过去**，改用 TP×PP 或副本；例外存在，要实测 | 可推导 + 实测 |
+| 模型必须切，且卡在同一 PCIe Switch 下 | **先从 TP = 该 Switch 下的卡数起步，再实测**。8×72 机器上 TP8 的 c8 聚合吞吐比单节点 TP4 高 12%——但用的是 **2 倍卡数**，**每卡效率 TP4 反而高 1.7 倍** | 实测 |
+| 卡跨 PCIe Switch 或跨 CPU Socket | **默认不要让 TP 跨过去**，改用 TP×PP 或副本。同一台机器也测到过例外（TP8 跨 SYS 仍赢 TP4），所以这是默认值，不是铁律，要实测 | 可推导 + 实测 |
 | 想要更长上下文 | 先降 KV 精度 / 加卡，DCP 在 PCIe 上收益有限 | 实测 + 可推导 |
-| 想用推测解码提速 | **draft 长度不是越大越好**，从 2–3 开始测 | 实测 |
-| 量化掉点明显 | 检查 MoE 路由层是否被一起量化了 | 实测 |
+| 想用推测解码提速 | **draft 长度不是越大越好**，从 2–3 开始测。公开的 19–22% 差距是 MTP3 与 DFlash2-K7 的对比，两者草稿方法也不同 | 实测（有混杂变量） |
+| 量化掉点明显 | **先把激活精度提上去**——W4A4 → W4A16 让 checksum 失败率从 5.9% 降到 0；FP32 router 是免费的二次保险 | 实测 |
 
 ## 目录
 
@@ -85,8 +85,8 @@
 1. **能塞进单卡，就别做张量并行。** 两个独立副本之间零通信，吞吐直接线性叠加；而 TP 每层都要 all-reduce，在 PCIe 上这个代价会吃掉大部分收益。
 2. **TP 的边界是 PCIe Switch，不是显卡数量。** 跨 Switch 的通信要走 CPU 内存，延迟骤增。四张卡插在两个 Switch 上时，TP=4 往往不如 TP=2 × PP=2，甚至不如两个 TP=2 副本。
 3. **PCIe 拓扑下应优先 one-shot all-reduce。** 帧同步式的 two-shot 在高速互联上更优，但它的优势建立在带宽充裕的前提上——PCIe 恰好相反。
-4. **推测解码的收益受带宽约束。** draft 越长，单次验证失败浪费的计算越多，而草稿模型本身还要占用带宽。在 PCIe 机器上，3 个 draft token 的方案可能明显快于 7 个。
-5. **量化要优先保护路由层。** MoE 模型里，专家权重可以激进量化，但路由器选错专家会直接毁掉输出。把 router 保持在更高精度，代价远小于收益。
+4. **推测解码的收益受带宽约束。** draft 越长，单次验证失败浪费的计算越多，而草稿模型本身还要占用带宽。公开对比（MTP3 vs DFlash2-K7）里短 draft 领先 19–22%，但两者的草稿方法和权重也不同——应当读作“两种方案都要实测”，而不是“7 一定比 3 差”。
+5. **先提激活精度，再谈路由层。** MoE 模型里，W4A4 → W4A16 一项就把 greedy-checksum 失败率从 5.9% 降到 0。FP32 router 权重不带来可测量的吞吐代价，且在 pre-QAD checkpoint 上是 19.5% → 4.0% 的差别，但它替代不了 A16 激活。
 6. **同一台机器，配置差异可以造成 2 倍以上的吞吐差距。** 这不是玄学，是每一个参数都在和你的实际拓扑对齐。
 
 ## 怎么用这个项目
@@ -105,8 +105,8 @@ python tools/planner.py --gpus A800-80 --count 8 --model qwen2.5-72b --ctx 8192
 
 ## 相关项目
 
-- [llm-inference-bench](https://gitee.com/wang-guangshuooo/llm-inference-bench) —— 配套的压测与评测平台，负责产出本项目需要的数据
-- [llm-private-deploy-handbook](https://gitee.com/wang-guangshuooo/llm-private-deploy-handbook) —— 私有化交付流程手册
+- [llm-inference-bench](https://github.com/Lowaltitudeflight/llm-inference-bench) —— 配套的压测与评测平台，负责产出本项目需要的数据
+- [llm-private-deploy-handbook](https://github.com/Lowaltitudeflight/llm-private-deploy-handbook) —— 私有化交付流程手册
 
 ## 许可
 

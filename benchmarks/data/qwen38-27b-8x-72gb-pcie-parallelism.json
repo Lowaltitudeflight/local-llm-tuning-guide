@@ -105,7 +105,7 @@
   "transferable": [
     "On dual-socket x86 with no NVLink (PCIe only), naive TP8 outperformed both TP4-on-one-NUMA-node and TP8+DP-attention for a 27B dense GQA model — at this model size, compute scaling beats the cross-socket all-reduce penalty",
     "DP-attention halved single-stream throughput at C1 (37.7 vs 75.3 tok/s): at low concurrency most DP ranks sit idle while the weights stay partitioned 8 ways",
-    "TP4 on a single NUMA node kept ~89% of TP8 C1 throughput with half the hardware — a viable config when the other 4 GPUs are needed elsewhere"
+    "TP4 on a single NUMA node kept 85.3% of TP8 C1 throughput (64.2 vs 75.3) and 89.3% of C8 aggregate (314.5 vs 352.4) with half the hardware — so its throughput per GPU is 1.7x higher at C1 (16.05 vs 9.41 tok/s/GPU). TP8 is a single-instance peak, not a free win; TP4 is the default when the other 4 GPUs can serve another replica."
   ],
   "not_transferable": [
     "Absolute numbers (driver, framework version, quantization dependent)",
