@@ -37,7 +37,9 @@ At inference time, VRAM is split four ways:
 Total VRAM = model weights + KV cache + activations and workspace + framework overhead
 ```
 
-`gpu-memory-utilization` (commonly defaulting to 0.90–0.93 in vLLM) controls **how much of the last three can be used**. It is not a knob you can mindlessly turn up:
+`gpu-memory-utilization` (commonly defaulting to 0.90–0.93 in vLLM) is a budget on **total VRAM**, not on "the last three items". The engine reserves `VRAM × util` for the whole executor: weights are allocated first, and the KV cache gets whatever remains after the profiling peak. That is why raising util to 0.95 can OOM a model that "only" needs 52 GB of weights — the weights are inside the same budget.
+
+Treat it as: `KV pool ≈ VRAM × util − weights − activation peak − workspace`. It is not a knob you can mindlessly turn up:
 
 | Raising it | Lowering it |
 |---|---|

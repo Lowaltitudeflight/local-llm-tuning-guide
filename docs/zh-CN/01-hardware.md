@@ -26,8 +26,10 @@
 | `PIX` | 经过**单个** PCIe Switch | 快 |
 | `PXB` | 经过**多个** PCIe Switch | 中 |
 | `PHB` | 经过 PCIe Host Bridge（CPU 引出） | 慢 |
+| `NODE` | 同一 NUMA 节点内，跨 host bridge | 慢 |
 | `SYS` | 经过 CPU 间 SMP 互连（跨 NUMA） | 最慢 |
-| `NODE` | 同一 NUMA 节点内 | — |
+
+`NODE` 不是“慢一档的 `SYS`”：它表示两张卡挂在**同一颗** CPU 下，通信不过 UPI。双路主板上它通常就是 4 卡 TP 组的快路径，[8×72 配方](../../recipes/zh-CN/8x-72gb-pcie.md)把 GPU0–3 当作一个 NUMA 组就是因为这个。
 
 **对推理的意义**：TP 的每一步 all-reduce 都会走这条路径。如果卡对之间是 `SYS`，那部分通信要先出 CPU、过 QPI/UPI、再进另一颗 CPU——延迟可能是 `PIX` 的若干倍。
 
@@ -57,7 +59,7 @@ GPU2    PXB     PXB      X      SYS     0-31            0
 GPU3    SYS     SYS     SYS      X      32-63           1
 ```
 
-这个例子里：GPU0/1/2 在同一组 PCIe Switch 下（`PIX`/`PXB`），而 GPU3 在另一颗 CPU 上（`SYS`）。**结论直接就有了：TP=4 会跨越最慢的那条链路，应该考虑 TP=3（走 Switch 内）或 2×2 的组合。**
+这个例子里：GPU0/1/2 在同一组 PCIe Switch 下（`PIX`/`PXB`），而 GPU3 在另一颗 CPU 上（`SYS`）。**结论直接就有了：TP=4 会跨越最慢的那条链路。** 应该用 TP=2 + PP=2，或两个 TP=2 副本。TP=3 在这里不成立：TP 必须同时整除注意力头数和 KV 头数（4 个 KV 头 ÷ 3 不是整数），引擎会直接起不来；而且 GPU2 到 GPU0/1 走的是 `PXB`（第二个 Switch），并不在同一个 `PIX` 内。
 
 ## 1.4 拓扑决定了什么
 

@@ -9,8 +9,18 @@ Two front ends over the same set of decisions.
 | [`detect_topology.py`](detect_topology.py) | Collects GPU topology, power limits, and NUMA layout as JSON. | Before choosing parallelism; also produces the hardware block of a recipe |
 | [`check_repo.py`](check_repo.py) | CI check: bilingual parity, relative links, benchmark schema. | Every push, locally or in GitHub Actions |
 
-Both answer the same three questions — interconnect, memory, strategy — and
-both refuse to invent numbers. They differ only in how you reach them.
+They do **not** cover the same questions, and the difference matters:
+
+- `planner.py` takes model, quantisation, context length and GPU count and
+  answers all three: interconnect ceiling, memory budget, and a concrete
+  TP/PP/replica layout.
+- `config-generator.html` only does the **topology/strategy** part. It asks you
+  whether the model fits on one card; it does not compute KV size and does not
+  ask for a context length. If you need "does this model fit and at what
+  concurrency", use the CLI (or `MODEL_MATRIX.md`), not the web page.
+
+Both refuse to invent numbers, and both mark their output with an evidence
+grade. They differ in what they accept as input, not in rigour.
 
 The "no network" claim of `config-generator.html` is enforced, not assumed:
 `tests/test_offline_html.py` fails the build the moment an external resource

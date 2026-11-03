@@ -21,9 +21,13 @@
 | `id` | 文件名同名的稳定标识(kebab-case) |
 | `kind` | `first-party` 或 `external-reference` |
 | `hardware` | GPU 型号×数量、显存、功耗上限、互联、`nvidia-smi topo -m` 摘要、CPU/NUMA |
-| `software` | 驱动 / CUDA / NCCL / 框架及版本 / 镜像 tag / 模型 revision |
+| `software` | 驱动 / CUDA / NCCL / 框架及版本 / 镜像 **digest**（不能只写 tag）/ 模型 revision |
+| `software.image_digest` | `repo@sha256:...`；可变 tag 无法定位构建 |
+| `software.clocks` | 运行时的时钟策略（锁定 / 默认 / 未知）；没有它，"实测"无法复现 |
 | `model` | 模型名、量化方式与工具、revision |
-| `workload` | 并发档位、输入/输出长度、采样参数 |
+| `workload` | 并发档位、输入/输出长度、采样参数、prompt 来源或 seed |
+| `commands.server` | 服务端完整启动命令（占位符不算可复现） |
+| `commands.client` | 压测端完整命令与版本 |
 | `results[]` | 每个配置一行;指标名用 `*_c1_*`(单并发)/ `*_c8_*`(聚合)区分 |
 | `variance` | 各指标多次独立启动的范围 |
 | `methodology` | 窗口长度、预热、重复次数的一句话概括 |
@@ -31,6 +35,15 @@
 | `transferable` / `not_transferable` | 迁移边界 |
 | `submitted_by` | GitHub 用户名(first-party 填) |
 | `date` | 测量日期(YYYY-MM-DD;未知写 null,不要猜) |
+
+## 实测 vs 推导
+
+表里两个长得一样的数字，立场可能不同：
+
+- **实测**：由某次运行产出，且有 `variance`、`commands.*`、`software.clocks`。
+- **推导**：由模型 config 或硬件规格算出（KV/token 用 `2 × 层数 × KV 头数 × head_dim × 字节`，权重用 `参数量 × 字节`）。它仍然有用，但必须标 `derived` 并让公式可见——因为它不会和现实矛盾，只会和错误的 config 矛盾。
+
+如果数字是从启动日志反推的，而不是直接观测的，写 `derived-from-log` 并注明是哪一行。本目录里早于 `commands`/`clocks` 字段的文件在这条轴上是不完整的；它们的 `measured` 应读作"在真实硬件上跑过"，而不是"完全可复现"。
 
 ## 提交方式
 

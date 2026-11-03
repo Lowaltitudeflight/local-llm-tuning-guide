@@ -16,7 +16,7 @@
 
 | 症状 | 可能原因 | 先查 | 处理 | 等级 |
 |---|---|---|---|---|
-| 语句通顺但答案错 / 乱码 | 量化不匹配，尤其是 MoE router 被一起量化 | 与未量化模型对比；看量化 config | router 保持高精度，只量化专家 | 实测 |
+| 语句通顺但答案错 / 乱码 | MoE 激活量化过激，有时叠加 router 被量化 | 跑 greedy checksum 测试（同 prompt、temperature 0、重复 50+ 次）；看量化 config 的激活精度 | **先把激活提到 A16**（W4A4 → A16 实测失败率 5.9% → 0%）；router 保持 FP32/BF16 作为免费的二次保险 | 实测 |
 | 专家权重加载报 2 倍尺寸不匹配 | 打包的 FP4/NVFP4 专家被按 FP8 加载 | 类似 `size of tensor a (192) must match ... (384)` | 不要强制 `--quantization`，让框架自动识别打包格式 | 实测 |
 | 推理模型 `content` 为空 | 输出 token 全花在 `reasoning_content` 上 | 看原始响应 | 提高 `max_tokens`；启用 reasoning parser；聊天界面单独渲染思考过程 | 实测 |
 | 模型名 404 | 客户端发的 id 和服务端不一致 | `GET /v1/models` | 设 `--served-model-name`，或使用完全一致的 id | 可推导 |

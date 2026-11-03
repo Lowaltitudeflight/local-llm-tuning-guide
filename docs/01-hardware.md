@@ -26,8 +26,10 @@ Four PCIe cards can have completely different topologies. From fastest to slowes
 | `PIX` | Through a **single** PCIe Switch | Fast |
 | `PXB` | Through **multiple** PCIe Switches | Medium |
 | `PHB` | Through a PCIe Host Bridge (fanned out by the CPU) | Slow |
+| `NODE` | Within the same NUMA node, crossing host bridges | Slow |
 | `SYS` | Across the inter-CPU SMP interconnect (crosses NUMA) | Slowest |
-| `NODE` | Within the same NUMA node | — |
+
+`NODE` is not a slower kind of `SYS`: it means both GPUs hang off the **same** CPU socket, so traffic never crosses UPI. On a dual-socket board it is the normal fast path for a 4-GPU TP group, which is why the [8×72 recipe](../recipes/8x-72gb-pcie.md) treats GPU0–3 as one NUMA group.
 
 **What this means for inference**: every all-reduce step of TP travels along these paths. If a pair of cards is connected via `SYS`, that traffic has to leave one CPU, cross QPI/UPI, and enter the other CPU — latency can be several times that of `PIX`.
 
@@ -57,7 +59,7 @@ GPU2    PXB     PXB      X      SYS     0-31            0
 GPU3    SYS     SYS     SYS      X      32-63           1
 ```
 
-In this example, GPU0/1/2 sit behind the same set of PCIe Switches (`PIX`/`PXB`), while GPU3 hangs off the other CPU (`SYS`). **The conclusion falls out immediately: TP=4 would cross the slowest link, so consider TP=3 (staying within the switch) or a 2x2 arrangement.**
+In this example, GPU0/1/2 sit behind the same set of PCIe Switches (`PIX`/`PXB`), while GPU3 hangs off the other CPU (`SYS`). **The conclusion falls out immediately: TP=4 would cross the slowest link.** Use TP=2 + PP=2, or two TP=2 replicas. TP=3 is not the fix here: TP must divide both attention heads and KV heads (4 KV heads ÷ 3 is not an integer), so the engine refuses to start — and GPU2 reaches GPU0/1 over `PXB`, not `PIX`, because it sits behind the second switch.
 
 ## 1.4 What the topology decides
 

@@ -21,9 +21,13 @@
 | `id` | Stable identifier matching the file name (kebab-case) |
 | `kind` | `first-party` or `external-reference` |
 | `hardware` | GPU model × count, VRAM, power limit, interconnect, `nvidia-smi topo -m` summary, CPU/NUMA |
-| `software` | Driver / CUDA / NCCL / framework and versions / image tag / model revision |
+| `software` | Driver / CUDA / NCCL / framework and versions / image **digest** (not just tag) / model revision |
+| `software.image_digest` | `repo@sha256:...`; a mutable tag does not identify a build |
+| `software.clocks` | Clock policy during the run (locked / default / unknown). "Measured" claims are not reproducible without it |
 | `model` | Model name, quantization method and tool, revision |
-| `workload` | Concurrency levels, input/output lengths, sampling parameters |
+| `workload` | Concurrency levels, input/output lengths, sampling parameters, prompt source or seed |
+| `commands.server` | The exact server launch command (placeholders are not reproducible) |
+| `commands.client` | The exact load-generator command and its version |
 | `results[]` | One row per configuration; metric names use `*_c1_*` (single concurrency) / `*_c8_*` (aggregate) to distinguish |
 | `variance` | Range across multiple independent launches, per metric |
 | `methodology` | One-line summary of window length, warm-up, and repetition count |
@@ -31,6 +35,15 @@
 | `transferable` / `not_transferable` | Transfer boundaries |
 | `submitted_by` | GitHub username (for first-party) |
 | `date` | Measurement date (YYYY-MM-DD; write null if unknown, do not guess) |
+
+## Measured vs derived
+
+Two numbers that look identical in a table can have different standing:
+
+- **measured** — produced by a run, with `variance`, `commands.*` and `software.clocks` filled in.
+- **derived** — computed from a model config or hardware spec (`2 × layers × kv_heads × head_dim × bytes` for KV/token, `params × bytes` for weights). It is still useful, but it must be labelled `derived` and the formula must be visible, because it cannot disagree with reality — it only disagrees with a wrong config.
+
+If a figure was back-computed from a startup log rather than observed directly, write `derived-from-log` and say which line. Files in this directory that predate the `commands`/`clocks` fields are known to be incomplete on this axis; treat their `measured` label as "run on hardware" rather than "fully specified".
 
 ## How to submit
 

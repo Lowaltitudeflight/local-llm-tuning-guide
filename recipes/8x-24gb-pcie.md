@@ -2,9 +2,18 @@
 
 Target hardware: 8 consumer cards with 24 GB of VRAM (RTX 4090 / 3090 class), no NVLink.
 
-## What makes this class special
+## Two sub-classes, not one
 
-On consumer Ada and later GPUs, **inter-GPU P2P access is restricted at the driver level**. The consequences:
+The 4090 and the 3090 are usually lumped together as "24 GB consumer cards". They behave differently, and the difference decides whether TP is viable:
+
+| Card | Architecture | PCIe P2P | NVLink | Consequence |
+|---|---|---|---|---|
+| RTX 4090 | Ada (SM89) | **Restricted by the driver** — NCCL routes through host memory | No | TP beyond 2 rarely pays; prefer replicas |
+| RTX 3090 | Ampere (SM86) | **Works on most boards** — Ampere was not driver-restricted; verify with a P2P bandwidth test | Optional bridge | TP2/TP4 is viable: 4×3090 TP4 measured 610 tok/s, but 2×TP2 replicas on the same box reached 1437 tok/s |
+
+So the rule is: **on Ada/Blackwell consumer cards, avoid TP; on 3090s, measure it — it is not the same limitation.** The rest of this recipe targets the Ada class, which is the harder case.
+
+### Why Ada-class TP is expensive
 
 - NCCL cannot transfer data directly between cards; it can only **route through host memory** (GPU → CPU → GPU)
 - Every all-reduce crosses PCIe twice, degrading both latency and bandwidth
@@ -18,7 +27,7 @@ So the configuration strategy for these machines is completely different from da
 nvidia-smi topo -m
 ```
 
-On this class of hardware, card pairs usually show `PHB` or `SYS`, and the P2P row shows as unavailable. This is normal, not a fault.
+On Ada-class cards, pairs usually show `PHB` or `SYS`, and the P2P capability row reports as unavailable. This is normal for that class, not a fault. On 3090s the same matrix often shows `PIX`/`PXB` and P2P as supported.
 
 ## Launch configuration
 

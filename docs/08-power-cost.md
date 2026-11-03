@@ -12,11 +12,13 @@ concurrency raises per-watt efficiency but not total throughput.
 
 First-party example (Qwen3.8-27B BF16, TP1, c64, GPU-only power):
 
-| Machine | Power limit | c64 output | tok/s per W |
-|---|---:|---:|---:|
-| RTX 5090 96GB | 575 W | 559.6 tok/s | ~0.97 |
-| RTX PRO 6000 Server 96GB | 600 W | 697.9 tok/s | ~1.16 |
-| RTX PRO 5000 72GB | 300 W | 300.5 tok/s | ~1.00 |
+| Machine | Power limit | c64 output | tok/s per W (measured draw) | tok/s per W (at the limit) |
+|---|---:|---:|---:|---:|
+| A — RTX 5090 96GB (modded) | 575 W | 559.6 tok/s | ~1.04 | ~0.97 |
+| B — RTX PRO 6000 Server 96GB | 600 W | 697.9 tok/s | **~1.69** | ~1.16 |
+| C — RTX PRO 5000 72GB | 300 W | 300.5 tok/s | ~1.02 | ~1.00 |
+
+The two efficiency columns answer different questions, and mixing them is how the same run ends up with two "correct" numbers. The measured column divides by board power logged during the run; the limit column divides by the card's power cap. B never reached its 600 W cap at c64 — at ~1.69 tok/s/W it drew roughly 413 W, so normalising by the limit understates it by about 45%. A and C were at their caps, so the two columns nearly agree. **Use measured draw to compare cards; use the limit to size a PSU.**
 
 The PRO 5000 result is the interesting one: **c32 and c64 were identical**
 (300.72 vs 300.50 tok/s) — the card was already at its power ceiling. The
