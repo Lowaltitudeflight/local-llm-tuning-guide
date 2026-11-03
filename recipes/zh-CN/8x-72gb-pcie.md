@@ -154,6 +154,8 @@ docker run -d --name ds41 --init --gpus all --network host --ipc host --shm-size
 - **KV 是 785 B/token，不是公式预测的约 23 KiB。** 服务报告 `max_total_num_tokens=12,443,136`、KV 可用 9.10 GiB，即调度器按 785 B/token 分配——比 `2 × 40 × 576 × 1` 小 30 倍。压缩注意力 + Engram 表让这个公式完全不适用。
 - **在这套构建上，Engram offload 省的是主机内存，不是显存。** 设了 `SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1` 后日志确实显示 `engram host table layer 1: layout=shared, 96681 MiB resident`，但每卡显存没变（62,964 MiB），`avail mem` 仍是 10.33 GB。表在主机内存里，同时仍在设备上。
 
+**关缓存复测（`--disable-radix-cache`）：** 三次启动在全部 15 个配置上差异只有 0.2~3.4%，包含 C64 与 32K 预填充（[干净数据](../../benchmarks/data/deepseek-v41-flash-8x72-tp8-clean.json)）。前缀缓存对长请求的价值：C4 从 154.5 降到 101.3（约 34%）、C8 约 48%；短请求基本不变。关缓存后 C8 短请求仍是**可复现的低谷**（71~72 tok/s），说明这是这套栈的特性，不是测量噪声。
+
 完整数据：[`benchmarks/data/deepseek-v41-flash-8x72-tp8.json`](../../benchmarks/data/deepseek-v41-flash-8x72-tp8.json)。
 
 ## 第一方实测数据（2026-10-23，稠密 27B）

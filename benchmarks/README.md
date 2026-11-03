@@ -76,7 +76,19 @@ Short = 256 input / 128 output, long = 8192 / 256; means of three runs ([JSON](d
 - **TP4 is impossible for this checkpoint**: 476 GiB / 4 = 119 GiB per card against 71.12 GiB usable; the load OOMs at 70.74 GiB (see [09 Failed configurations](../docs/09-failures.md) F-17).
 - **KV is 785 B/token on this build** (`max_total_num_tokens=12,443,136`, 9.10 GiB), not the ~23 KiB the GQA formula predicts.
 
-### Latency vs concurrency (same run, cache-on)
+**Clean rerun, prefix cache disabled (2026-11-03).** Three independent launches agree within **0.2-3.4%** on all 15 configurations ([JSON](data/deepseek-v41-flash-8x72-tp8-clean.json)):
+
+| Workload | C1 | C4 | C8 | C16 | C32 | C64 |
+|---|---:|---:|---:|---:|---:|---:|
+| short 256/128 | 35.8 | 107.7 | **71.7** | 242.1 | 350.7 | **372.0** |
+| long 8192/256 | 34.1 | 101.3 | 131.5 | 184.7 | 211.9 | 218.9 |
+| 32K prefill (c1/c2/c4) | 15.1 | 19.7 | 22.7 | — | — | — |
+
+- **C8 is a reproducible dip, not noise**: 70.6-72.3 tok/s in all three launches, below C4 (107.7) and far below C16 (242.1). With the cache disabled the level is stable, so the 128% spread in the cache-on dataset came from cache state, not from scheduling.
+- **Prefix caching is worth ~34% of long-request throughput at C4** (154.5 -> 101.3) and **~48% at C8** (255.1 -> 131.5); short requests are unaffected (351 -> 351 at C32).
+- **32K prefill sets the ceiling**: 15.1 tok/s at C1 with a 1.9 s TTFT, 22.7 tok/s at C4.
+
+
 
 Throughput alone does not tell you what a user feels. The same MiniMax-M3.1-Flash run recorded TTFT and TPOT at every level:
 

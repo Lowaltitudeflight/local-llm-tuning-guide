@@ -19,6 +19,10 @@ All notable changes to this project are recorded here. The format follows
 - **`docs/09-failures.md` F-26**: the same DeepSeek command produced 71.4 / 71.8 / 162.6 tok/s at
   C8 across three launches (128% spread) while long-request levels held within 0.1–3.2% —
   a cautionary entry for single-run short-request curves.
+- **Clean rerun with `--disable-radix-cache`** (`benchmarks/data/deepseek-v41-flash-8x72-tp8-clean.json`):
+  15 configurations including C64 and 32K prefill, three independent launches, spread 0.2–3.4% on every level.
+  Shows prefix caching is worth ~34% of long-request throughput at C4 and ~48% at C8, and that the C8
+  short-request dip (71–72 tok/s) is reproducible once the cache is out of the picture.
 - **`recipes/8x-72gb-pcie.md` Case D**: full launch command, measured matrix, TP4 verdict, and
   the two places where this model escapes the GQA/KV rules (KV 30× smaller than the formula;
   Engram host offload does not free VRAM on this build).

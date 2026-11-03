@@ -48,7 +48,7 @@ These are the most expensive class: nothing crashes, the numbers look good, and 
 | F-23 | Comparing engines/quantizations at different `--max-tokens` or concurrency levels | "AWQ is 2× faster" | The comparison changed more than one variable |
 | F-24 | Benchmarking from the same machine as the server | Simpler setup | The load generator competes for CPU/PCIe and pollutes TTFT and P99 |
 | F-25 | `measured` KV/token figures that are actually `2 × layers × kv_heads × head_dim × bytes` | A precise-looking number | It is a derivation, not a measurement; label it `derived` and keep the formula visible |
-| F-26 | Short-request levels measured once, at c4–c16 | A smooth-looking concurrency curve | On DeepSeek-V4.1-Flash-1017 the same command produced **71.4 / 71.8 / 162.6 tok/s at c8** across three independent launches (128% spread), while long-request levels held within 0.1–3.2%. One run per level cannot tell a configuration from a scheduling artefact |
+| F-26 | Short-request levels measured once, at c4–c16 | A smooth-looking concurrency curve | On DeepSeek-V4.1-Flash-1017 the same command produced **71.4 / 71.8 / 162.6 tok/s at c8** across three launches with prefix caching on (128% spread). With `--disable-radix-cache` the same level is stable at **70.6–72.3** across three launches — the spread was cache state, and c8 is a genuine dip rather than noise. Either way, one run per level cannot tell a configuration from a cache or scheduling artefact |
 
 ## 9.5 Adding an entry
 

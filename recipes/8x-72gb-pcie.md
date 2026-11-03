@@ -154,6 +154,8 @@ Two things this model does that the GQA rules in [06 KV cache](../docs/06-kv-cac
 - **KV is 785 B/token, not the ~23 KiB the formula predicts.** The server reports `max_total_num_tokens=12,443,136` with 9.10 GiB available, so the scheduler allocates 785 B/token — 30× less than `2 × 40 × 576 × 1`. Compressed attention plus Engram tables make the formula inapplicable.
 - **Engram offload saves host memory, not VRAM, on this build.** With `SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1` the log shows `engram host table layer 1: layout=shared, 96681 MiB resident`, but per-card VRAM is unchanged (62,964 MiB) and `avail mem` stays at 10.33 GB. The table is in host RAM *and* still resident on the device.
 
+**Clean rerun with `--disable-radix-cache`:** three launches agree within 0.2-3.4% on all 15 configurations, including C64 and 32K prefill ([clean JSON](../benchmarks/data/deepseek-v41-flash-8x72-tp8-clean.json)). Prefix caching is worth ~34% of long-request throughput at C4 (154.5 -> 101.3) and ~48% at C8, while short requests are unchanged. The C8 short-request level stays a **reproducible dip** (71-72 tok/s) when the cache is off, so it is a property of this stack rather than measurement noise.
+
 Full data: [`benchmarks/data/deepseek-v41-flash-8x72-tp8.json`](../benchmarks/data/deepseek-v41-flash-8x72-tp8.json).
 
 ## First-party measurements (2026-10-23, dense 27B)

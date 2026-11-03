@@ -35,7 +35,7 @@
    16,
    32
   ],
-  "input_tokens": "256 (short) / 8192 (long), requested. The server reports only uncached prompt tokens, so measured input throughput is lower than the nominal length at higher concurrency",
+  "input_tokens": "256 (short) / 8192 (long) requested; measured prompts average ~120 and ~4,744 tokens. The random-ids dataset is re-tokenized through the chat template, so the effective prompt is 47-58% of the nominal length. Verified not to be a prefix-cache artefact: a companion run with --disable-radix-cache shows the same per-request lengths",
   "output_tokens": "128 (short) / 256 (long) requested; the model stops at EOS after ~62 (short) and ~119 (long) tokens, so the reported output totals are lower than the cap",
   "sampling": "temperature 0, top_p 1.0, seed 42, one warm-up request per level",
   "server_notes": "TP8 + EP8, --moe-runner-backend flashinfer_mxfp4, dsv4/flashmla attention, --chunked-prefill-size 2048, --max-running-requests 32, --mem-fraction-static 0.85, --context-length 32768, CUDA graph decode bs<=32. Startup reports max_total_num_tokens=12443136 and 9.10 GiB available for KV, i.e. ~785 B/token on this build"
@@ -362,7 +362,7 @@
  ],
  "not_transferable": [
   "Short-request levels are NOT reproducible on this build: c4-c16 spread 14-128% across launches (c8 measured 71.4, 71.8 and 162.6 tok/s in three runs), so do not quote the short-request curve as a configuration result",
-  "All numbers are prefix-cache friendly: random-ids prompts share prefixes and the server counts only uncached input tokens (58-89% of nominal at c8+). A cache-disabled rerun will be lower",
+  "The effective prompt is 47-58% of the nominal length (random-ids is re-tokenized through the chat template), so input throughput is not 'an 8192-token prompt'. The companion cache-off dataset shows how much prefix caching contributes to the difference",
   "Output length is model-determined (EOS at ~62 / ~119 tokens), not the 128/256 cap; token throughput is not comparable to fixed-length runs",
   "TP4 is impossible for this checkpoint on 4 x 72 GB: 476 GiB / 4 = 119 GiB per card against 71.12 GiB usable, and the load OOMs at 70.74 GiB. See docs/09-failures.md F-16",
   "Absolute numbers depend on the exact image digest, driver/CUDA, the three SM120 patches, and --max-running-requests 32 (the production compose uses 8)"
