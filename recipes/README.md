@@ -15,6 +15,7 @@ Examples: 4x-96gb-pcie.md
 | Recipe | Hardware | Status |
 |---|---|---|
 | [4x-24gb-pcie](4x-24gb-pcie.md) | 4 × 24 GB cards, PCIe interconnect (RTX 4090 / 3090 class) | Reference starting point |
+| [4x-72gb-pcie](4x-72gb-pcie.md) | 4 × 72 GB cards, PCIe interconnect (RTX PRO 5000 class) | Reference starting point; also the "does not fit" column for 252 GB models |
 | [4x-96gb-pcie](4x-96gb-pcie.md) | 4 × 96 GB cards, PCIe interconnect (RTX PRO 6000 class) | Reference starting point |
 | [8x-24gb-pcie](8x-24gb-pcie.md) | 8 × 24 GB cards, PCIe interconnect (RTX 4090 class) | Reference starting point |
 | [8x-72gb-pcie](8x-72gb-pcie.md) | 8 × 72 GB cards, PCIe interconnect, dual NUMA (RTX PRO 5000 Blackwell class) | First-party benchmark 2026-10-23 (dense 27B: naive TP8 fastest) |

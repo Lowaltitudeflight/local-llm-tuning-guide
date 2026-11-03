@@ -109,14 +109,39 @@ Rules of thumb:
 
 ## 2.7 Flag quick reference
 
+### Parallelism flags
+
 | Framework | TP | PP | DP | EP |
 |---|---|---|---|---|
 | vLLM | `--tensor-parallel-size` | `--pipeline-parallel-size` | `--data-parallel-size` | `--enable-expert-parallel` |
-| Default | 1 | 1 | 1 | off |
+| SGLang | `--tp` | `--pp` | `--dp` | `--ep` (or `--enable-ep-moe`) |
+| Default (both) | 1 | 1 | 1 | off |
+
+### The same knob under two names
+
+Both engines are used in this guide (the first-party data is SGLang; most recipes show vLLM). A configuration is not portable until these are translated:
+
+| What it controls | vLLM | SGLang |
+|---|---|---|
+| Tensor parallel size | `--tensor-parallel-size` | `--tp` |
+| Pipeline parallel size | `--pipeline-parallel-size` | `--pp` |
+| Max context length | `--max-model-len` | `--context-length` |
+| GPU memory budget | `--gpu-memory-utilization` (fraction of total VRAM) | `--mem-fraction-static` (fraction of total VRAM) |
+| Max concurrent sequences | `--max-num-seqs` | `--max-running-requests` |
+| Prefill batch budget | `--max-num-batched-tokens` | `--chunked-prefill-size` |
+| KV cache dtype | `--kv-cache-dtype` | `--kv-cache-dtype` |
+| Prefix caching | `--enable-prefix-caching` (on by default in V1) | `--enable-prefix-caching` (RadixAttention, on by default) |
+| Attention backend | `--attention-backend` (`flashinfer`/`triton`/…) | `--attention-backend` (`flashinfer`/`triton`/…) |
+
+Three traps when moving a config between them:
+
+1. **`--gpu-memory-utilization` and `--mem-fraction-static` are not the same denominator.** vLLM treats it as a budget for weights + KV + activations; SGLang reserves the fraction for static allocation and keeps a separate share for the rest. Do not copy 0.90 across and assume parity — re-measure.
+2. **`--max-num-batched-tokens` and `--chunked-prefill-size` are not equivalent.** The former caps a whole prefill batch, the latter caps the chunk; matching the numbers does not produce the same TTFT curve.
+3. **Defaults differ per version.** The table above reflects vLLM 0.32.x and SGLang 0.5.x; check `--help` on your build before quoting this table in a plan.
 
 > Flag names and defaults change between framework versions; always check the official documentation for the version you are running.
 
-**Basis: open** (measured comparisons of different parallel configurations on your machine are welcome — please submit them)
+**Basis: derivable** (flag semantics from both projects' CLI references; the two "not equivalent" notes come from measurement on the 8×72 box)
 
 ---
 

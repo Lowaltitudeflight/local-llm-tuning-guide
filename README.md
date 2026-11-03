@@ -62,6 +62,7 @@ Six highest-frequency questions, answered first.
 | [06 KV cache](docs/06-kv-cache.md) | Memory budget, prefix cache, long context | How context eats your VRAM |
 | [07 Troubleshooting](docs/07-troubleshooting.md) | Symptom → cause → fix | OOM, bad output, SM120 kernel gaps, hung containers |
 | [08 Power & cost](docs/08-power-cost.md) | Tokens per watt and per dollar | Why a 300 W card stops scaling |
+| [09 Failed configurations](docs/09-failures.md) | What does not work, and why | The negative half of the library |
 | [Model matrix](MODEL_MATRIX.md) | What fits on 72 GB cards | Weights, KV/token, minimum GPU count, verified configs |
 | [Recipes](recipes/) | Ready-to-use configs by hardware | [4×72](recipes/4x-72gb-pcie.md) · [8×72](recipes/8x-72gb-pcie.md) · [4×96](recipes/4x-96gb-pcie.md) · [8×24](recipes/8x-24gb-pcie.md) |
 | [Benchmarks](benchmarks/) | Data tables and measurement method | Fill the table with your own machine |
@@ -79,8 +80,8 @@ Every conclusion carries a basis tag:
 
 | Tag | Meaning |
 |---|---|
-| **Measured** | Publicly verifiable measurement, with hardware, clocks, software versions and client command |
-| **Derivable** | Follows directly from hardware specifications or framework mechanics; independent of any single measurement |
+| **Measured** | Produced by a run on real hardware. Hardware, software versions and variance are recorded; new submissions must also record clock policy, image digest and the exact server/client commands (see [SCHEMA](benchmarks/data/SCHEMA.md)). Entries submitted before 2026-11 lack the last three and are marked as such — they were run, but are not yet fully reproducible |
+| **Derivable** | Calculated from a model config, hardware specification or framework mechanic; independent of any single measurement. In tables, a derivable figure says so (for example the KV/token derivation block in [MODEL_MATRIX](MODEL_MATRIX.md)) |
 | **Open** | Direction is clear but public data is missing; we provide a measurement method and leave the cell to be filled |
 
 **What this project does not do: invent numbers.** An empty cell is worth more than a fabricated one.

@@ -109,14 +109,39 @@ MoE 的专家权重占大头。用 TP 切会让每个专家都被切开、每层
 
 ## 2.7 参数速查
 
+### 并行参数
+
 | 框架 | TP | PP | DP | EP |
 |---|---|---|---|---|
 | vLLM | `--tensor-parallel-size` | `--pipeline-parallel-size` | `--data-parallel-size` | `--enable-expert-parallel` |
-| 默认值 | 1 | 1 | 1 | 关闭 |
+| SGLang | `--tp` | `--pp` | `--dp` | `--ep`（或 `--enable-ep-moe`） |
+| 默认值（两者） | 1 | 1 | 1 | 关闭 |
+
+### 同一个旋钮，两个名字
+
+本指南两套框架都在用（first-party 数据是 SGLang 跑的，多数配方给的是 vLLM 命令）。配置不能直接照搬，先翻译：
+
+| 控制什么 | vLLM | SGLang |
+|---|---|---|
+| 张量并行度 | `--tensor-parallel-size` | `--tp` |
+| 流水并行度 | `--pipeline-parallel-size` | `--pp` |
+| 最大上下文 | `--max-model-len` | `--context-length` |
+| 显存预算 | `--gpu-memory-utilization`（占总显存比例） | `--mem-fraction-static`（占总显存比例） |
+| 最大并发序列数 | `--max-num-seqs` | `--max-running-requests` |
+| 预填充批预算 | `--max-num-batched-tokens` | `--chunked-prefill-size` |
+| KV 精度 | `--kv-cache-dtype` | `--kv-cache-dtype` |
+| 前缀缓存 | `--enable-prefix-caching`（V1 默认开） | `--enable-prefix-caching`（RadixAttention 默认开） |
+| 注意力后端 | `--attention-backend`（`flashinfer`/`triton`/…） | `--attention-backend`（`flashinfer`/`triton`/…） |
+
+换框架时最容易踩的三个坑：
+
+1. **`--gpu-memory-utilization` 与 `--mem-fraction-static` 的分母不同。** vLLM 把它当"权重 + KV + 激活"的总预算；SGLang 把该比例留给静态分配，其余另算。不要把 0.90 直接搬过去当成等价，必须复测。
+2. **`--max-num-batched-tokens` 与 `--chunked-prefill-size` 不等价。** 前者限制整个 prefill 批次，后者限制单个 chunk；数值相同并不意味着 TTFT 曲线相同。
+3. **默认值随版本变化。** 上表对应 vLLM 0.32.x / SGLang 0.5.x，写进方案前先跑 `--help` 核对。
 
 > 各框架版本间参数名与默认值会变化，使用前请对照你所用版本的官方文档。
 
-**依据：待测**（欢迎提交你机器上不同并行配置的实测对比）
+**依据：可推导**（参数语义来自两个项目的 CLI 参考；两条"不等价"提示来自 8×72 机器的实测）
 
 ---
 

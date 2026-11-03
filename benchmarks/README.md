@@ -61,6 +61,33 @@ Key findings:
 - 1M context works: a cold **999,988-token** request finished in **517.7 s** with no OOM; a 1,047,992-token boundary request also succeeded. One 1M request consumes ~79% of the 1,329,280-token KV pool, so 1M concurrency is effectively 1.
 - The 1M configuration costs ~23% C64 throughput (815.7 tok/s) because prefill graphs are disabled and chunked prefill drops to 2048.
 
+### Latency vs concurrency (same run, cache-on)
+
+Throughput alone does not tell you what a user feels. The same MiniMax-M3.1-Flash run recorded TTFT and TPOT at every level:
+
+| Level | Aggregate output (tok/s) | TTFT mean | TTFT p99 | TPOT mean | TPOT p99 |
+|---|---:|---:|---:|---:|---:|
+| c1 | 94.4 | 195 ms | 210 ms | 9.9 ms | 9.9 ms |
+| c8 | 489.8 | 227 ms | 368 ms | 15.5 ms | 16.3 ms |
+| c32 | 740.4 | 800 ms | — | 35.1 ms | — |
+| c64 | 1060.8 | 1579 ms | — | 40.8 ms | — |
+| 32K input, c1 | 31.1 | 5632 ms | 5821 ms | 11.2 ms | 11.7 ms |
+
+How to read it:
+
+- **TTFT is queueing + prefill.** From c8 to c64 TTFT grows 7× while TPOT grows 2.6×. The queue is what hurts, not the decoder.
+- **TPOT grows because the GPU is shared.** Decode is bandwidth-bound; more sequences per step means each sequence gets less of the step. 9.9 → 40.8 ms is the price of 8× aggregate throughput.
+- **Goodput is the number to quote against an SLO.** If the SLO is "TTFT ≤ 500 ms", this box supports roughly c8-c16, not c64 — even though c64 has the highest throughput. Decide `--max-num-seqs` from the SLO table below, not from the throughput peak.
+
+| SLO | Maximum level that still meets it |
+|---|---|
+| TTFT p99 ≤ 400 ms | c8 |
+| TTFT p99 ≤ 1 s | c32 |
+| TTFT < 2 s | c64 |
+| 32K prompt, TTFT < 6 s | c1 only |
+
+> The c64 row is why "throughput went up" is not a capacity plan. At c64 the average request waits 1.6 s before its first token — fine for batch summarisation, unacceptable for chat.
+
 ## External reference data
 
 Below are **publicly verifiable third-party measurements**, listed here to anchor parameter choices. **Note that they are results under specific conditions and cannot be extrapolated directly.**
