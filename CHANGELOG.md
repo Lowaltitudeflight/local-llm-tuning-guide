@@ -4,6 +4,25 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions use
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **First DeepSeek-V4.1-Flash-1017 dataset** (`benchmarks/data/deepseek-v41-flash-8x72-tp8.json`):
+  8× RTX PRO 5000 72GB, TP8+EP8, short (256/128) and long (8192/256) matrices at C1–C32,
+  three independent launches with per-config variance arrays.
+- **`MODEL_MATRIX`**: the DeepSeek row now carries both KV figures — `785 B/token` measured
+  (12.44M-token pool in 9.10 GiB) next to the `2.6 KiB` reported value, with the 3.4× gap
+  explained instead of silently resolved.
+- **`docs/09-failures.md` F-17**: DeepSeek-V4.1-Flash-1017 cannot run TP4 on 4×72 GB; the load
+  OOMs at 70.74 GiB with the exact log and the arithmetic.
+- **`docs/09-failures.md` F-26**: the same DeepSeek command produced 71.4 / 71.8 / 162.6 tok/s at
+  C8 across three launches (128% spread) while long-request levels held within 0.1–3.2% —
+  a cautionary entry for single-run short-request curves.
+- **`recipes/8x-72gb-pcie.md` Case D**: full launch command, measured matrix, TP4 verdict, and
+  the two places where this model escapes the GQA/KV rules (KV 30× smaller than the formula;
+  Engram host offload does not free VRAM on this build).
+
 ## [0.3.0] - 2026-11-03
 
 ### Fixed

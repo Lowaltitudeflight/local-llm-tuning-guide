@@ -21,7 +21,7 @@ Which models have actually been run on the hardware this guide targets, how much
 | GLM-5.3-Flash | ~355B | FP8 | ~306 GB | ~96 KiB (fp8 KV) † | 6–8 | TP8 + EP8 | [GLM TP8+EP8 data](benchmarks/README.md#glm-53-flash-fp8-tp8ep8-on-two-96-gb-pcie-hosts-2026-10-22) |
 | GLM-5.3-Flash | ~355B | NVFP4 | ~190 GB | ~96 KiB (fp8 KV) † | 4–6 | TP4/TP8 + EP; measure | Derived |
 | MiniMax-M3.1-Flash | 428B (23B) | MXFP8 + NVFP4 experts | ~252 GB | **~7.5 KiB derived (per rank, fp8, TP8)** | 8 | TP8 + Marlin on SM120; TP8 + MegaMoE on SM100 | [8×72 recipe Case C](recipes/8x-72gb-pcie.md#case-c-large-nvfp4-moe-minimax-m31-flash-252-gb--sm120-workaround) · [JSON](benchmarks/data/minimax-m31-flash-8x72-sm120.json) |
-| DeepSeek-V4.1-Flash-1017 | 538B-class | FP8 + FP4 experts | ~510 GB (476 GiB) | ~2.6 KiB reported (MLA + Engram, fp8) † | 8 | TP8 + EP8; Engram tables on host | Deployment notes in the [related handbook](https://github.com/Lowaltitudeflight/llm-private-deploy-handbook) |
+| DeepSeek-V4.1-Flash-1017 | 538B-class | FP8 + FP4 experts | ~510 GB (476 GiB) | **~785 B measured** · ~2.6 KiB reported † | 8 | TP8 + EP8; Engram tables nominally on host (no VRAM saving observed yet) | [8×72 TP8 matrix](benchmarks/data/deepseek-v41-flash-8x72-tp8.json) · [handbook](https://github.com/Lowaltitudeflight/llm-private-deploy-handbook) |
 
 ## KV/token derivation
 
@@ -42,7 +42,14 @@ Two traps this table is meant to catch:
 
 Run `python tools/check_model_matrix.py` to re-derive the published-geometry rows above and fail on a mismatch. It runs in CI.
 
-† GLM-5.3-Flash and DeepSeek-V4.1-Flash-1017 use configs we could not re-derive from a public checkpoint (MLA compression and Engram tables mean the GQA formula does not apply to DeepSeek at all). Their numbers come from the deployment notes and should be re-measured on your build — the tool accepts `--kv-bytes-per-token` precisely so these cases do not require editing code.
+† GLM-5.3-Flash and DeepSeek-V4.1-Flash-1017 use configs we could not re-derive from a public checkpoint (MLA compression and Engram tables mean the GQA formula does not apply to DeepSeek at all).
+
+For DeepSeek-V4.1-Flash-1017 the two published figures disagree by 3.4× and **both are kept on purpose**:
+
+- `~2.6 KiB` comes from the deployment notes and has no stated denominator (per rank? per model? Engram included?).
+- `~785 B` is measured on this box: the server reports `max_total_num_tokens=12,443,136` with `9.10 GiB` available for KV, i.e. `9.10 GiB / 12.44M = 785 B/token`.
+
+The measured number is what the scheduler actually allocates, so it is the one to use for capacity planning on this build; the reported number stays because we cannot reproduce its denominator. Config geometry alone (40 layers × 576 elements × 1 B) would predict ~23 KiB/token, 30× higher than the measured value — this model's compressed attention and Engram layout are not describable by the GQA formula at all. Use `--kv-bytes-per-token` for your own build rather than trusting either figure.
 
 ## What the table is trying to prevent
 

@@ -121,6 +121,41 @@ sglang serve \
 - 1M 请求占 KV 池约 79%，同一时间基本只能跑 1 条；1M 配置的 C64 吞吐为 815.7 tok/s，比 128K 低约 23%。
 - 完整数据与方法：[`benchmarks/data/minimax-m31-flash-8x72-sm120.json`](../../benchmarks/data/minimax-m31-flash-8x72-sm120.json)。
 
+### 方案 D：DeepSeek-V4.1-Flash-1017（476 GiB）——只能 TP8，以及 TP4 为什么不存在
+
+这是本配方承载过最大的模型，也是「卡数不是调参选项」最清楚的例子：
+
+```
+476 GiB 权重 ÷ 4 卡 = 每卡 119 GiB
+                    > 每卡可用 71.12 GiB
+```
+
+TP4 不是慢，是**加载 `create_fp8_moe_weight_` 时就 OOM**：显存已用 70.74 GiB，还差 1.05 GiB。完整日志见 [09 失败的配置](../../docs/zh-CN/09-failures.md) F-17。**8 卡是下限，而且模型会把 8 卡全部占满。**
+
+```bash
+docker run -d --name ds41 --init --gpus all --network host --ipc host --shm-size 64g   -v /path/to/models:/models2:ro   -e HF_HUB_OFFLINE=1   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True   -e NCCL_BUFFSIZE=2097152   -e SGLANG_ENABLE_JIT_DEEPGEMM=1   -e SGLANG_DSV41_TORCH_PREFILL_INDEXER=1   -e SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1   lmsysorg/sglang:dev-minimax-m31-flash   sglang serve     --model-path /models2/DeepSeek-V4.1-Flash-1017-cfg0     --trust-remote-code     --tp 8 --ep-size 8     --moe-runner-backend flashinfer_mxfp4     --chunked-prefill-size 2048     --max-running-requests 32     --mem-fraction-static 0.85     --cuda-graph-max-bs-decode 32 --cuda-graph-max-bs-prefill 16     --context-length 32768     --host 0.0.0.0 --port 8200
+```
+
+实测（三次独立启动取均值，同机，驱动 595.71.05）：
+
+| 负载 | C1 | C4 | C8 | C16 | C32 |
+|---|---:|---:|---:|---:|---:|
+| 短 256/128，输出 tok/s | 35.6 | 112.4 | *不稳定* | 253.9 | **357.5** |
+| 长 8192/256，输出 tok/s | 34.1 | 154.5 | **252.9** | 189.2 | 216.6 |
+
+怎么读：
+
+- **长请求在 C8 达峰，之后回落。** 252.9 → C16 的 189.2，同时 TTFT p50 从 385 ms 涨到 1030 ms。prefill 和 decode 在抢同一批 SM——这正是 PD 分离存在的理由。
+- **短请求一路涨到 C32**，但这条曲线**不可复现**：同一条命令三次启动，C8 得到 71.4 / 71.8 / 162.6 tok/s。不要把短请求曲线当成配置结论引用。
+- **单流约 34 tok/s**（TPOT 24.8 ms），两种形状一样。并发买的是聚合吞吐，不是单流速度。
+
+这个模型有两件事超出了 [06 KV 缓存](../../docs/zh-CN/06-kv-cache.md) 里的 GQA 规则：
+
+- **KV 是 785 B/token，不是公式预测的约 23 KiB。** 服务报告 `max_total_num_tokens=12,443,136`、KV 可用 9.10 GiB，即调度器按 785 B/token 分配——比 `2 × 40 × 576 × 1` 小 30 倍。压缩注意力 + Engram 表让这个公式完全不适用。
+- **在这套构建上，Engram offload 省的是主机内存，不是显存。** 设了 `SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1` 后日志确实显示 `engram host table layer 1: layout=shared, 96681 MiB resident`，但每卡显存没变（62,964 MiB），`avail mem` 仍是 10.33 GB。表在主机内存里，同时仍在设备上。
+
+完整数据：[`benchmarks/data/deepseek-v41-flash-8x72-tp8.json`](../../benchmarks/data/deepseek-v41-flash-8x72-tp8.json)。
+
 ## 第一方实测数据（2026-10-23，稠密 27B）
 
 在快照机器上用 [sglang 0.5.22](../../benchmarks/data/qwen38-27b-8x-72gb-pcie-parallelism.json) 实测——Qwen3.8-27B BF16，输入 4096 / 输出 512 token，每次冷启动换新容器：

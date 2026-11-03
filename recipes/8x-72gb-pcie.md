@@ -121,6 +121,41 @@ Long-context and memory notes:
 - With `--context-length 1048576`, one 1M request occupies ~79% of the KV pool, so concurrency at 1M is effectively 1. The 1M configuration costs ~23% C64 throughput (815.7 tok/s) versus 128K.
 - Full data and methodology: [`benchmarks/data/minimax-m31-flash-8x72-sm120.json`](../benchmarks/data/minimax-m31-flash-8x72-sm120.json).
 
+### Case D: DeepSeek-V4.1-Flash-1017 (476 GiB) — TP8 only, and why TP4 cannot exist
+
+DeepSeek-V4.1-Flash-1017 is the largest model this recipe has hosted. It is also the clearest case of "the card count is not a tuning choice":
+
+```
+476 GiB of weights / 4 cards = 119 GiB per card
+                              > 71.12 GiB usable per card
+```
+
+TP4 does not fail slowly — it OOMs while loading `create_fp8_moe_weight_`, at 70.74 GiB in use with 1.05 GiB still requested. See [09 Failed configurations](../docs/09-failures.md) F-17 for the log. **8 cards is the minimum, and the model uses all of them.**
+
+```bash
+docker run -d --name ds41 --init --gpus all --network host --ipc host --shm-size 64g   -v /path/to/models:/models2:ro   -e HF_HUB_OFFLINE=1   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True   -e NCCL_BUFFSIZE=2097152   -e SGLANG_ENABLE_JIT_DEEPGEMM=1   -e SGLANG_DSV41_TORCH_PREFILL_INDEXER=1   -e SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1   lmsysorg/sglang:dev-minimax-m31-flash   sglang serve     --model-path /models2/DeepSeek-V4.1-Flash-1017-cfg0     --trust-remote-code     --tp 8 --ep-size 8     --moe-runner-backend flashinfer_mxfp4     --chunked-prefill-size 2048     --max-running-requests 32     --mem-fraction-static 0.85     --cuda-graph-max-bs-decode 32 --cuda-graph-max-bs-prefill 16     --context-length 32768     --host 0.0.0.0 --port 8200
+```
+
+Measured (three independent launches, mean; same box, driver 595.71.05):
+
+| Workload | C1 | C4 | C8 | C16 | C32 |
+|---|---:|---:|---:|---:|---:|
+| short 256/128, output tok/s | 35.6 | 112.4 | *unstable* | 253.9 | **357.5** |
+| long 8192/256, output tok/s | 34.1 | 154.5 | **252.9** | 189.2 | 216.6 |
+
+Reading it:
+
+- **Long requests peak at C8 and then fall.** 252.9 → 189.2 at C16 while TTFT p50 goes 385 ms → 1030 ms. Prefill and decode are fighting for the same SMs; this is the case PD separation exists for.
+- **Short requests keep climbing to C32**, but that curve is **not reproducible**: C8 produced 71.4, 71.8 and 162.6 tok/s in three launches of the identical command. Do not quote the short-request curve as a configuration result.
+- **Single stream is ~34 tok/s** (TPOT 24.8 ms) for both shapes. Concurrency buys aggregate throughput, not per-stream speed.
+
+Two things this model does that the GQA rules in [06 KV cache](../docs/06-kv-cache.md) do not cover:
+
+- **KV is 785 B/token, not the ~23 KiB the formula predicts.** The server reports `max_total_num_tokens=12,443,136` with 9.10 GiB available, so the scheduler allocates 785 B/token — 30× less than `2 × 40 × 576 × 1`. Compressed attention plus Engram tables make the formula inapplicable.
+- **Engram offload saves host memory, not VRAM, on this build.** With `SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1` the log shows `engram host table layer 1: layout=shared, 96681 MiB resident`, but per-card VRAM is unchanged (62,964 MiB) and `avail mem` stays at 10.33 GB. The table is in host RAM *and* still resident on the device.
+
+Full data: [`benchmarks/data/deepseek-v41-flash-8x72-tp8.json`](../benchmarks/data/deepseek-v41-flash-8x72-tp8.json).
+
 ## First-party measurements (2026-10-23, dense 27B)
 
 Measured on the snapshot machine with [sglang 0.5.22](../benchmarks/data/qwen38-27b-8x-72gb-pcie-parallelism.json) — Qwen3.8-27B BF16, input 4096 / output 512 tokens, fresh container per launch:

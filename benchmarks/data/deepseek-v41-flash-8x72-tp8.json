@@ -1,0 +1,371 @@
+{
+ "schema": "lltg.benchmark.v1",
+ "id": "deepseek-v41-flash-8x72-tp8",
+ "kind": "first-party",
+ "title": "DeepSeek-V4.1-Flash-1017 (FP8 + FP4 experts) on 8x RTX PRO 5000 72GB: TP8+EP8, short/long request matrix C1-C32, and why TP4 does not fit",
+ "date": "2026-11-03",
+ "hardware": {
+  "gpus": "8 x NVIDIA RTX PRO 5000 72GB Blackwell (SM120)",
+  "vram_gb_per_gpu": 72,
+  "power_limit": "300 W per GPU",
+  "interconnect": "PCIe only, no NVLink; GPU0-3 NODE within NUMA0, GPU4-7 NODE within NUMA1, cross-group SYS",
+  "topology_summary": "nvidia-smi topo -m: 4+4 split across two CPU sockets",
+  "cpu_numa": "2 x Xeon Platinum 8488C, 192 threads; GPU0-3 -> NUMA0, GPU4-7 -> NUMA1; 1.5 TB RAM"
+ },
+ "software": {
+  "driver": "595.71.05",
+  "cuda": "13.4.1 (container runtime)",
+  "nccl": null,
+  "framework": "SGLang",
+  "framework_version": "0.0.0.dev0 (dev-minimax-m31-flash build)",
+  "image": "lmsysorg/sglang:dev-minimax-m31-flash",
+  "image_digest": "sha256:614b1509bcb729c653528d448bff9850f8977fcad9d12ba56bd6dbe3d7985e87",
+  "clocks": "not locked; default application clocks (idle 180 MHz, max 3090 MHz); 300 W power cap"
+ },
+ "model": {
+  "name": "DeepSeek-V4.1-Flash-1017 (538B-class MoE, 40 layers, 384 routed experts / 6 active, MLA attention with Engram tables)",
+  "quantization": "FP8 block 32x32 weights (ue8m0 scales) + FP4 packed experts (expert_dtype=fp4); 476 GiB on disk",
+  "revision": null
+ },
+ "workload": {
+  "concurrency": [
+   1,
+   4,
+   8,
+   16,
+   32
+  ],
+  "input_tokens": "256 (short) / 8192 (long), requested. The server reports only uncached prompt tokens, so measured input throughput is lower than the nominal length at higher concurrency",
+  "output_tokens": "128 (short) / 256 (long) requested; the model stops at EOS after ~62 (short) and ~119 (long) tokens, so the reported output totals are lower than the cap",
+  "sampling": "temperature 0, top_p 1.0, seed 42, one warm-up request per level",
+  "server_notes": "TP8 + EP8, --moe-runner-backend flashinfer_mxfp4, dsv4/flashmla attention, --chunked-prefill-size 2048, --max-running-requests 32, --mem-fraction-static 0.85, --context-length 32768, CUDA graph decode bs<=32. Startup reports max_total_num_tokens=12443136 and 9.10 GiB available for KV, i.e. ~785 B/token on this build"
+ },
+ "commands": {
+  "server": "sglang serve --model-path /models2/DeepSeek-V4.1-Flash-1017-cfg0 --trust-remote-code --tp 8 --ep-size 8 --moe-runner-backend flashinfer_mxfp4 --chunked-prefill-size 2048 --max-running-requests 32 --mem-fraction-static 0.85 --cuda-graph-max-bs-decode 32 --cuda-graph-max-bs-prefill 16 --context-length 32768 --host 0.0.0.0 --port 8200  (env: HF_HUB_OFFLINE=1, PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True, NCCL_BUFFSIZE=2097152, SGLANG_ENABLE_JIT_DEEPGEMM=1, SGLANG_DSV41_TORCH_PREFILL_INDEXER=1, SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1)",
+  "client": "python3 -m sglang.bench_serving --backend sglang-oai-chat --base-url http://127.0.0.1:8200 --model <local path> --tokenizer <local path> --dataset-name random-ids --random-input-len {256|8192} --random-output-len {128|256} --num-prompts {16 | 2*concurrency} --max-concurrency {1,4,8,16,32} --seed 42 --disable-tqdm"
+ },
+ "results": [
+  {
+   "config": "short 256/128, c1",
+   "metrics": {
+    "output_toks": 35.6,
+    "input_toks": 90.7,
+    "ttft_p50_ms": 166.2,
+    "ttft_p99_ms": 231.1,
+    "tpot_p50_ms": 24.8,
+    "e2e_p50_ms": 1018.4,
+    "output_tokens_total": 752
+   }
+  },
+  {
+   "config": "short 256/128, c4",
+   "metrics": {
+    "output_toks": 112.4,
+    "input_toks": 286.2,
+    "ttft_p50_ms": 206.9,
+    "ttft_p99_ms": 1202.6,
+    "tpot_p50_ms": 25.1,
+    "e2e_p50_ms": 1388.3,
+    "output_tokens_total": 752
+   }
+  },
+  {
+   "config": "short 256/128, c8",
+   "metrics": {
+    "output_toks": 101.9,
+    "input_toks": 259.5,
+    "ttft_p50_ms": 2639.5,
+    "ttft_p99_ms": 6940.0,
+    "tpot_p50_ms": 32.6,
+    "e2e_p50_ms": 4073.0,
+    "output_tokens_total": 752
+   }
+  },
+  {
+   "config": "short 256/128, c16",
+   "metrics": {
+    "output_toks": 253.9,
+    "input_toks": 435.7,
+    "ttft_p50_ms": 747.6,
+    "ttft_p99_ms": 1143.3,
+    "tpot_p50_ms": 47.5,
+    "e2e_p50_ms": 3467.2,
+    "output_tokens_total": 2225
+   }
+  },
+  {
+   "config": "short 256/128, c32",
+   "metrics": {
+    "output_toks": 357.5,
+    "input_toks": 759.6,
+    "ttft_p50_ms": 579.2,
+    "ttft_p99_ms": 1922.8,
+    "tpot_p50_ms": 76.9,
+    "e2e_p50_ms": 4652.3,
+    "output_tokens_total": 3989
+   }
+  },
+  {
+   "config": "long 8192/256, c1",
+   "metrics": {
+    "output_toks": 34.1,
+    "input_toks": 1359.4,
+    "ttft_p50_ms": 606.4,
+    "ttft_p99_ms": 962.6,
+    "tpot_p50_ms": 24.8,
+    "e2e_p50_ms": 3851.5,
+    "output_tokens_total": 1904
+   }
+  },
+  {
+   "config": "long 8192/256, c4",
+   "metrics": {
+    "output_toks": 154.5,
+    "input_toks": 6159.6,
+    "ttft_p50_ms": 252.6,
+    "ttft_p99_ms": 533.9,
+    "tpot_p50_ms": 20.2,
+    "e2e_p50_ms": 2939.4,
+    "output_tokens_total": 1904
+   }
+  },
+  {
+   "config": "long 8192/256, c8",
+   "metrics": {
+    "output_toks": 252.9,
+    "input_toks": 10080.8,
+    "ttft_p50_ms": 384.7,
+    "ttft_p99_ms": 810.3,
+    "tpot_p50_ms": 22.0,
+    "e2e_p50_ms": 3098.7,
+    "output_tokens_total": 1904
+   }
+  },
+  {
+   "config": "long 8192/256, c16",
+   "metrics": {
+    "output_toks": 189.2,
+    "input_toks": 5802.7,
+    "ttft_p50_ms": 1030.0,
+    "ttft_p99_ms": 7904.6,
+    "tpot_p50_ms": 55.1,
+    "e2e_p50_ms": 10083.1,
+    "output_tokens_total": 4657
+   }
+  },
+  {
+   "config": "long 8192/256, c32",
+   "metrics": {
+    "output_toks": 216.6,
+    "input_toks": 6787.3,
+    "ttft_p50_ms": 1280.1,
+    "ttft_p99_ms": 14988.6,
+    "tpot_p50_ms": 106.8,
+    "e2e_p50_ms": 16370.6,
+    "output_tokens_total": 8341
+   }
+  }
+ ],
+ "variance": {
+  "note": "Three independent server launches (container restart between runs, weights reloaded each time). Long-request levels reproduce within 0.1-3.2%; short-request levels at c4-c16 spread 14-128%, worst at c8. Per-config arrays below.",
+  "short_c1_output_toks": {
+   "runs": [
+    35.7,
+    35.7,
+    35.6
+   ],
+   "min": 35.6,
+   "max": 35.7
+  },
+  "short_c1_ttft_p50_ms": {
+   "runs": [
+    160.0,
+    162.0,
+    177.0
+   ],
+   "min": 160.0,
+   "max": 177.0
+  },
+  "short_c4_output_toks": {
+   "runs": [
+    108.0,
+    106.9,
+    122.4
+   ],
+   "min": 106.9,
+   "max": 122.4
+  },
+  "short_c4_ttft_p50_ms": {
+   "runs": [
+    206.0,
+    207.0,
+    207.0
+   ],
+   "min": 206.0,
+   "max": 207.0
+  },
+  "short_c8_output_toks": {
+   "runs": [
+    71.8,
+    71.4,
+    162.6
+   ],
+   "min": 71.4,
+   "max": 162.6
+  },
+  "short_c8_ttft_p50_ms": {
+   "runs": [
+    3573.0,
+    3595.0,
+    750.0
+   ],
+   "min": 750.0,
+   "max": 3595.0
+  },
+  "short_c16_output_toks": {
+   "runs": [
+    243.5,
+    241.8,
+    276.6
+   ],
+   "min": 241.8,
+   "max": 276.6
+  },
+  "short_c16_ttft_p50_ms": {
+   "runs": [
+    830.0,
+    833.0,
+    580.0
+   ],
+   "min": 580.0,
+   "max": 833.0
+  },
+  "short_c32_output_toks": {
+   "runs": [
+    348.0,
+    357.0,
+    367.6
+   ],
+   "min": 348.0,
+   "max": 367.6
+  },
+  "short_c32_ttft_p50_ms": {
+   "runs": [
+    581.0,
+    585.0,
+    572.0
+   ],
+   "min": 572.0,
+   "max": 585.0
+  },
+  "long_c1_output_toks": {
+   "runs": [
+    34.1,
+    34.2,
+    34.0
+   ],
+   "min": 34.0,
+   "max": 34.2
+  },
+  "long_c1_ttft_p50_ms": {
+   "runs": [
+    609.0,
+    606.0,
+    604.0
+   ],
+   "min": 604.0,
+   "max": 609.0
+  },
+  "long_c4_output_toks": {
+   "runs": [
+    154.6,
+    154.2,
+    154.8
+   ],
+   "min": 154.2,
+   "max": 154.8
+  },
+  "long_c4_ttft_p50_ms": {
+   "runs": [
+    232.0,
+    263.0,
+    263.0
+   ],
+   "min": 232.0,
+   "max": 263.0
+  },
+  "long_c8_output_toks": {
+   "runs": [
+    256.2,
+    248.3,
+    254.1
+   ],
+   "min": 248.3,
+   "max": 256.2
+  },
+  "long_c8_ttft_p50_ms": {
+   "runs": [
+    327.0,
+    435.0,
+    392.0
+   ],
+   "min": 327.0,
+   "max": 435.0
+  },
+  "long_c16_output_toks": {
+   "runs": [
+    189.6,
+    188.5,
+    189.5
+   ],
+   "min": 188.5,
+   "max": 189.6
+  },
+  "long_c16_ttft_p50_ms": {
+   "runs": [
+    924.0,
+    1084.0,
+    1082.0
+   ],
+   "min": 924.0,
+   "max": 1084.0
+  },
+  "long_c32_output_toks": {
+   "runs": [
+    216.7,
+    216.6,
+    216.4
+   ],
+   "min": 216.4,
+   "max": 216.7
+  },
+  "long_c32_ttft_p50_ms": {
+   "runs": [
+    1200.0,
+    1364.0,
+    1277.0
+   ],
+   "min": 1200.0,
+   "max": 1364.0
+  }
+ },
+ "methodology": "Three independent launches of the same server command; each level is one bench_serving invocation with one warm-up request, random-ids prompts (fixed seed), fixed input/output lengths, temperature 0. Metrics are wall-clock from the client; TTFT/TPOT come from the streaming responses. Throughput in the results table is the mean of the three launches; p99 TTFT is the worst observed.",
+ "source": {
+  "project": "local-llm-tuning-guide first-party measurement (zkyd machine)",
+  "url": "https://github.com/Lowaltitudeflight/local-llm-tuning-guide"
+ },
+ "transferable": [
+  "On 8x RTX PRO 5000 72GB (SM120, PCIe, dual NUMA), DeepSeek-V4.1-Flash-1017 runs at TP8+EP8 with 476 GiB of weights and a 12.4M-token KV pool on the dev-minimax image",
+  "Long-request (8192/256) aggregate output peaks at c8 (252.9 tok/s mean) and then falls to 189.2 at c16 and 216.6 at c32 - prefill and decode contend for the same SMs, which is the case PD separation targets",
+  "Long-request levels are the reproducible part of this dataset: 0.1-3.2% spread across three launches",
+  "Single-stream decode is ~34 tok/s (TPOT 24.8 ms) for both shapes, i.e. concurrency buys aggregate throughput, not per-stream speed"
+ ],
+ "not_transferable": [
+  "Short-request levels are NOT reproducible on this build: c4-c16 spread 14-128% across launches (c8 measured 71.4, 71.8 and 162.6 tok/s in three runs), so do not quote the short-request curve as a configuration result",
+  "All numbers are prefix-cache friendly: random-ids prompts share prefixes and the server counts only uncached input tokens (58-89% of nominal at c8+). A cache-disabled rerun will be lower",
+  "Output length is model-determined (EOS at ~62 / ~119 tokens), not the 128/256 cap; token throughput is not comparable to fixed-length runs",
+  "TP4 is impossible for this checkpoint on 4 x 72 GB: 476 GiB / 4 = 119 GiB per card against 71.12 GiB usable, and the load OOMs at 70.74 GiB. See docs/09-failures.md F-16",
+  "Absolute numbers depend on the exact image digest, driver/CUDA, the three SM120 patches, and --max-running-requests 32 (the production compose uses 8)"
+ ],
+ "submitted_by": "Lowaltitudeflight"
+}

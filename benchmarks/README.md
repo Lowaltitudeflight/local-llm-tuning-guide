@@ -61,6 +61,21 @@ Key findings:
 - 1M context works: a cold **999,988-token** request finished in **517.7 s** with no OOM; a 1,047,992-token boundary request also succeeded. One 1M request consumes ~79% of the 1,329,280-token KV pool, so 1M concurrency is effectively 1.
 - The 1M configuration costs ~23% C64 throughput (815.7 tok/s) because prefill graphs are disabled and chunked prefill drops to 2048.
 
+### DeepSeek-V4.1-Flash-1017 (8x RTX PRO 5000 72GB, TP8+EP8, 2026-11-03)
+
+476 GiB checkpoint (FP8 weights + FP4 experts), TP8 + EP8, three independent launches.
+Short = 256 input / 128 output, long = 8192 / 256; means of three runs ([JSON](data/deepseek-v41-flash-8x72-tp8.json)):
+
+| Workload | C1 | C4 | C8 | C16 | C32 |
+|---|---:|---:|---:|---:|---:|
+| short, output tok/s | 35.6 | 112.4 | *unstable* | 253.9 | **357.5** |
+| long, output tok/s | 34.1 | 154.5 | **252.9** | 189.2 | 216.6 |
+
+- **Long requests peak at C8 and fall afterwards** (252.9 -> 189.2 at C16, TTFT p50 385 -> 1030 ms): prefill and decode contend for the same SMs.
+- **The short-request curve is not reproducible**: C8 produced 71.4 / 71.8 / 162.6 tok/s in three launches of the identical command (128% spread), while long-request levels held within 0.1-3.2%. Do not quote it as a configuration result.
+- **TP4 is impossible for this checkpoint**: 476 GiB / 4 = 119 GiB per card against 71.12 GiB usable; the load OOMs at 70.74 GiB (see [09 Failed configurations](../docs/09-failures.md) F-17).
+- **KV is 785 B/token on this build** (`max_total_num_tokens=12,443,136`, 9.10 GiB), not the ~23 KiB the GQA formula predicts.
+
 ### Latency vs concurrency (same run, cache-on)
 
 Throughput alone does not tell you what a user feels. The same MiniMax-M3.1-Flash run recorded TTFT and TPOT at every level:
