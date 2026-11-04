@@ -1,10 +1,27 @@
 **简体中文** ｜ [English](README.md)
 
+[![CI](https://github.com/Lowaltitudeflight/local-llm-tuning-guide/actions/workflows/ci.yml/badge.svg)](https://github.com/Lowaltitudeflight/local-llm-tuning-guide/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Lowaltitudeflight/local-llm-tuning-guide?sort=semver)](https://github.com/Lowaltitudeflight/local-llm-tuning-guide/releases)
+
 # 本地大模型部署调优指南
 
-**无 NVLink 多卡场景的配置决策库。**
+**无 NVLink 的 PCIe 多卡机器上，LLM 服务该怎么配。** 给的是决策，不是原理科普——每条结论都带证据等级和适用条件。
 
-不是原理科普，是决策依据 —— 每条结论都标注它的来源和适用条件。
+![DeepSeek-V4.1-Flash 在 8× RTX PRO 5000 72GB 上：短/长请求的输出吞吐随并发变化，标注了可复现的 c8 低谷](docs/images/social-preview.png)
+
+| 你能拿到 | 说明 |
+| --- | --- |
+| **实测，不是转述** | 8 份数据集，每份 3 次独立启动，逐配置方差 |
+| **连失败一起写** | [9 个失败的配置](docs/zh-CN/09-failures.md)——哪些根本起不来，哪些能跑但结论是错的 |
+| **数字可核** | 每个 KV 数值都由 CI 重算；每份数据都声明[可复现状态](benchmarks/zh-CN/README.md#每个数据集的可复现状态) |
+| **双语** | 每章、每个配方都有英文和简体中文 |
+
+三条和常识相反的结论：
+
+- **TP8 多用了 2 倍卡，只换来 +12% 吞吐**——按每卡算，TP4 反而高 1.7 倍。
+- **476 GiB 的 checkpoint 在 4×72 GB 上跑不了 TP4**——加载到 70.74 GiB 就 OOM，每卡差 48 GiB。
+- **KV cache 实测 785 B/token**，比 GQA 公式的预测小 30 倍。
 
 ---
 

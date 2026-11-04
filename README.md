@@ -2,12 +2,27 @@
 
 [![CI](https://github.com/Lowaltitudeflight/local-llm-tuning-guide/actions/workflows/ci.yml/badge.svg)](https://github.com/Lowaltitudeflight/local-llm-tuning-guide/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Lowaltitudeflight/local-llm-tuning-guide?sort=semver)](https://github.com/Lowaltitudeflight/local-llm-tuning-guide/releases)
 
 # Local LLM Tuning Guide
 
-**A decision library for multi-GPU deployments without NVLink.**
+**Decisions, not theory, for multi-GPU LLM serving on PCIe machines without NVLink.**
+Every claim carries an evidence grade and the conditions under which it holds.
 
-Not an explanation of theory — a set of decisions, each tagged with its source and the conditions under which it holds.
+![DeepSeek-V4.1-Flash on 8x RTX PRO 5000 72GB: output throughput against concurrency for short and long requests, with the reproducible c8 dip annotated](docs/images/social-preview.png)
+
+| What you get | Detail |
+| --- | --- |
+| **Measured, not repeated** | 8 datasets, three independent launches each, per-configuration variance |
+| **Failures included** | [9 failed configurations](docs/09-failures.md) — what never starts, and what runs but misleads |
+| **Numbers you can check** | every KV figure re-derived in CI; every dataset declares its [reproducibility status](benchmarks/README.md#reproducibility-status-of-every-dataset) |
+| **Bilingual** | every chapter and recipe in English and 简体中文 |
+
+Three findings that did not match the folklore:
+
+- **TP8 used 2× the cards for +12% throughput** — per GPU, TP4 was 1.7× better.
+- **A 476 GiB checkpoint cannot run TP4 on 4×72 GB** — it OOMs at 70.74 GiB, 48 GiB short per card.
+- **KV cache measured 785 B/token**, 30× smaller than the GQA formula predicts for this model.
 
 ---
 
