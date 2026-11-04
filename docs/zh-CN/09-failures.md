@@ -34,6 +34,7 @@
 | F-14 | AWQ 权重配 `--dtype bfloat16` | 启动失败或精度被静默改写 | vLLM 的 AWQ 内核只声明 fp16 激活 | `never`。用 `--dtype float16`（或不写） |
 | F-15 | 4 × 72 GB 跑 72B BF16，`--gpu-memory-utilization 0.99` | 启动即 OOM，尽管"权重装得下" | 145 GB 权重 + 每卡 workspace 超过 4 × 72 × 0.99 | 该规模 `never`。上 8 卡或量化 |
 | F-16 | `--max-model-len` 超过 KV 池容量 | `max seq len is larger than the maximum number of tokens that can be stored in KV cache` | 声明的上下文剩下的显存服务不了 | 该组合 `never`。降上下文或降 KV 精度 |
+| F-17 | DeepSeek-V4.1-Flash-1017 跑 **4 × 72 GB**，任何 `--mem-fraction-static` | 加载权重时 OOM：`create_fp8_moe_weight_` → `Tried to allocate 1.05 GiB. GPU 1 has a total capacity of 71.12 GiB of which 384.00 KiB is free` | 476 GiB 权重 ÷ 4 卡 = **每卡 119 GiB**，而可用只有 71.12 GiB。这是算术问题，不是调参问题 | 4 × 72 GB 上 `never`。需要 8 卡、4 × 141 GB（H200），或量化到约 250 GiB |
 
 ## 9.4 能跑但结论是错的
 
@@ -47,6 +48,7 @@
 | F-23 | 对比不同引擎/量化时改了 `--max-tokens` 或并发档 | "AWQ 快 2 倍" | 不止一个变量变了 |
 | F-24 | 压测机与服务同机 | 省事 | 压测进程抢 CPU/PCIe，污染 TTFT 与 P99 |
 | F-25 | 标成 `measured` 的 KV/token，其实是 `2 × 层数 × KV 头数 × head_dim × 字节` | 数字很精确 | 那是推导不是实测；标 `derived`，公式要能看见 |
+| F-26 | 短请求每档只测一次就画曲线 | 曲线看起来很平滑 | DeepSeek-V4.1-Flash-1017 上同一条命令、开着前缀缓存时，c8 三次得到 **71.4 / 71.8 / 162.6 tok/s**（128% 波动）；关掉 `--disable-radix-cache` 后同一档三次稳定在 **70.6~72.3**——波动来自缓存状态，c8 本身是真实低谷而非噪声。无论哪种情况，每档只跑一次都无法区分「配置差异」和「缓存/调度假象」 |
 
 ## 9.5 怎么加一条
 

@@ -4,6 +4,41 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions use
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Reproducibility metadata on every dataset.** Each JSON now carries a `reproducibility`
+  block (`full` / `partial` / `external-unverified`, what is missing, how many launches), and
+  `tools/check_repo.py` fails the build if a `full` entry lacks commands, a pinned image digest
+  or a clock policy. Current state: 2 full (the two DeepSeek-V4.1 runs), 4 partial (older
+  first-party data without recorded commands/clocks), 2 external-unverified (no source URL).
+- **MiniMax-M3.1-Flash dataset upgraded to `full`.** The launch command, the per-level
+  request counts (200/200/320/640/20/40/1000 prompts, 9,680 requests total) and both image
+  digests were recovered verbatim from the archived compose and bench script on the
+  measurement host, so the 2026-11-02 run can be re-executed instead of merely read.
+- `benchmarks/README.md` and its zh-CN counterpart now carry the per-dataset status table, so a
+  reader can see which numbers are a reproduction recipe and which are direction only.
+
+- **First DeepSeek-V4.1-Flash-1017 dataset** (`benchmarks/data/deepseek-v41-flash-8x72-tp8.json`):
+  8× RTX PRO 5000 72GB, TP8+EP8, short (256/128) and long (8192/256) matrices at C1–C32,
+  three independent launches with per-config variance arrays.
+- **`MODEL_MATRIX`**: the DeepSeek row now carries both KV figures — `785 B/token` measured
+  (12.44M-token pool in 9.10 GiB) next to the `2.6 KiB` reported value, with the 3.4× gap
+  explained instead of silently resolved.
+- **`docs/09-failures.md` F-17**: DeepSeek-V4.1-Flash-1017 cannot run TP4 on 4×72 GB; the load
+  OOMs at 70.74 GiB with the exact log and the arithmetic.
+- **`docs/09-failures.md` F-26**: the same DeepSeek command produced 71.4 / 71.8 / 162.6 tok/s at
+  C8 across three launches (128% spread) while long-request levels held within 0.1–3.2% —
+  a cautionary entry for single-run short-request curves.
+- **Clean rerun with `--disable-radix-cache`** (`benchmarks/data/deepseek-v41-flash-8x72-tp8-clean.json`):
+  15 configurations including C64 and 32K prefill, three independent launches, spread 0.2–3.4% on every level.
+  Shows prefix caching is worth ~34% of long-request throughput at C4 and ~48% at C8, and that the C8
+  short-request dip (71–72 tok/s) is reproducible once the cache is out of the picture.
+- **`recipes/8x-72gb-pcie.md` Case D**: full launch command, measured matrix, TP4 verdict, and
+  the two places where this model escapes the GQA/KV rules (KV 30× smaller than the formula;
+  Engram host offload does not free VRAM on this build).
+
 ## [0.3.0] - 2026-11-03
 
 ### Fixed

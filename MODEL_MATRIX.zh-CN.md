@@ -21,7 +21,7 @@
 | GLM-5.3-Flash | ~355B | FP8 | ~306 GB | ~96 KiB (fp8 KV) † | 6–8 | TP8 + EP8 | [GLM TP8+EP8 数据](benchmarks/zh-CN/README.md) |
 | GLM-5.3-Flash | ~355B | NVFP4 | ~190 GB | ~96 KiB (fp8 KV) † | 4–6 | TP4/TP8 + EP；实测 | 推导 |
 | MiniMax-M3.1-Flash | 428B (23B) | MXFP8 + NVFP4 专家 | ~252 GB | **~7.5 KiB 推导（每 rank，fp8，TP8）** | 8 | SM120：TP8 + Marlin；SM100：TP8 + MegaMoE | [8×72 配方方案 C](recipes/zh-CN/8x-72gb-pcie.md#方案-c大-nvfp4-moeminimax-m31-flash252-gbsm120-绕行方案) · [JSON](benchmarks/data/minimax-m31-flash-8x72-sm120.json) |
-| DeepSeek-V4.1-Flash-1017 | 538B 级 | FP8 + FP4 专家 | ~510 GB（476 GiB） | ~2.6 KiB 报告值（MLA + Engram，fp8）† | 8 | TP8 + EP8；Engram 表放主机内存 | 见[私有化部署手册](https://github.com/Lowaltitudeflight/llm-private-deploy-handbook) |
+| DeepSeek-V4.1-Flash-1017 | 538B 级 | FP8 + FP4 专家 | ~510 GB（476 GiB） | **~785 B 实测** · ~2.6 KiB 报告值 † | 8 | TP8 + EP8；Engram 表名义上放主机（实测暂未释放显存） | [8×72 TP8 矩阵](benchmarks/data/deepseek-v41-flash-8x72-tp8.json) · [部署手册](https://github.com/Lowaltitudeflight/llm-private-deploy-handbook) |
 
 ## KV/token 推导
 
@@ -42,7 +42,14 @@
 
 `python tools/check_model_matrix.py` 会重算上表中几何公开的行，对不上就报错；CI 里会跑。
 
-† GLM-5.3-Flash 与 DeepSeek-V4.1-Flash-1017 的 config 我们无法从公开 checkpoint 重算（DeepSeek 是 MLA + Engram，GQA 公式对它根本不适用）。这两个数字来自部署笔记，请在自己的构建上复测——工具提供 `--kv-bytes-per-token` 就是为了这种情况不需要改代码。
+† GLM-5.3-Flash 与 DeepSeek-V4.1-Flash-1017 的 config 我们无法从公开 checkpoint 重算（DeepSeek 是 MLA + Engram，GQA 公式对它根本不适用）。
+
+DeepSeek-V4.1-Flash-1017 的两个数字相差 3.4 倍，**两个都刻意保留**：
+
+- `~2.6 KiB` 来自部署笔记，没有写明分母（每 rank？整个模型？含不含 Engram？）。
+- `~785 B` 是在本机实测的：服务启动报告 `max_total_num_tokens=12,443,136`，KV 可用 `9.10 GiB`，即 `9.10 GiB ÷ 1244 万 = 785 B/token`。
+
+实测值才是调度器真正分配的量，在这套构建上做容量规划应当用它；报告值保留是因为我们无法复现它的分母。按 config 几何推算（40 层 × 576 × 1 B）会得到约 23 KiB/token，是实测值的 30 倍——这个模型的压缩注意力与 Engram 布局完全不能用 GQA 公式描述。请用 `--kv-bytes-per-token` 在自己的构建上填数，不要直接信这两个值中的任何一个。
 
 ## 这张表想避免什么
 

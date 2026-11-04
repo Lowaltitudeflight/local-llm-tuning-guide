@@ -13,7 +13,28 @@ python tools/planner.py --gpus RTX4090-24 --count 4 --params 35 --quant awq \
 
 The planner feeds existing measured data directly into its planning output.
 
-## First-party measurements from this project
+## Reproducibility status of every dataset
+
+Every JSON now declares what it takes to reproduce it (`reproducibility` block, enforced by `tools/check_repo.py`):
+
+| Dataset | Kind | Status | Missing |
+|---|---|---|---|
+| [deepseek-v41-flash-8x72-tp8](data/deepseek-v41-flash-8x72-tp8.json) | first-party | **full** | — |
+| [deepseek-v41-flash-8x72-tp8-clean](data/deepseek-v41-flash-8x72-tp8-clean.json) | first-party | **full** | — |
+| [minimax-m31-flash-8x72-sm120](data/minimax-m31-flash-8x72-sm120.json) | first-party | **full** | — |
+| [glm53-flash-fp8-8card-tp8ep](data/glm53-flash-fp8-8card-tp8ep.json) | first-party | partial | commands, clock policy, full digest, source |
+| [qwen38-27b-8x-72gb-pcie-parallelism](data/qwen38-27b-8x-72gb-pcie-parallelism.json) | first-party | partial | commands, clock policy, pinned image, source |
+| [qwen38-27b-bf16-singlecard-three-machines](data/qwen38-27b-bf16-singlecard-three-machines.json) | first-party | partial | commands, clock policy, source |
+| [rtx3090-replicas-vs-tp](data/rtx3090-replicas-vs-tp.json) | external | external-unverified | source URL, commands |
+| [rtx6000-maxq-mtp-vs-dflash](data/rtx6000-maxq-mtp-vs-dflash.json) | external | external-unverified | source URL, software block, commands |
+
+- **full** — server and client commands, a pinned image digest, clock policy and variance are all recorded. The two DeepSeek-V4.1 datasets meet this bar.
+- **partial** — the numbers were measured on real hardware, but the listed items were not recorded at the time. They are still usable as direction, not as a reproduction recipe.
+- **external-unverified** — third-party numbers whose source could not be located; treat as anecdote.
+
+The DeepSeek-V4.1 and MiniMax-M3.1 entries meet the current bar; the MiniMax commands and per-level request counts were recovered from the archived launch compose and bench script on the measurement host. The remaining first-party entries can be upgraded the same way if their original commands are recovered — the field is meant to make that gap visible instead of implied.
+
+
 
 | Hardware | Model | Configuration | C1 output | C8 aggregate | Submitter | Link |
 |---|---|---|---|---|---|---|
@@ -61,7 +82,34 @@ Key findings:
 - 1M context works: a cold **999,988-token** request finished in **517.7 s** with no OOM; a 1,047,992-token boundary request also succeeded. One 1M request consumes ~79% of the 1,329,280-token KV pool, so 1M concurrency is effectively 1.
 - The 1M configuration costs ~23% C64 throughput (815.7 tok/s) because prefill graphs are disabled and chunked prefill drops to 2048.
 
-### Latency vs concurrency (same run, cache-on)
+### DeepSeek-V4.1-Flash-1017 (8x RTX PRO 5000 72GB, TP8+EP8, 2026-11-03)
+
+476 GiB checkpoint (FP8 weights + FP4 experts), TP8 + EP8, three independent launches.
+Short = 256 input / 128 output, long = 8192 / 256; means of three runs ([JSON](data/deepseek-v41-flash-8x72-tp8.json)):
+
+| Workload | C1 | C4 | C8 | C16 | C32 |
+|---|---:|---:|---:|---:|---:|
+| short, output tok/s | 35.6 | 112.4 | *unstable* | 253.9 | **357.5** |
+| long, output tok/s | 34.1 | 154.5 | **252.9** | 189.2 | 216.6 |
+
+- **Long requests peak at C8 and fall afterwards** (252.9 -> 189.2 at C16, TTFT p50 385 -> 1030 ms): prefill and decode contend for the same SMs.
+- **The short-request curve is not reproducible**: C8 produced 71.4 / 71.8 / 162.6 tok/s in three launches of the identical command (128% spread), while long-request levels held within 0.1-3.2%. Do not quote it as a configuration result.
+- **TP4 is impossible for this checkpoint**: 476 GiB / 4 = 119 GiB per card against 71.12 GiB usable; the load OOMs at 70.74 GiB (see [09 Failed configurations](../docs/09-failures.md) F-17).
+- **KV is 785 B/token on this build** (`max_total_num_tokens=12,443,136`, 9.10 GiB), not the ~23 KiB the GQA formula predicts.
+
+**Clean rerun, prefix cache disabled (2026-11-03).** Three independent launches agree within **0.2-3.4%** on all 15 configurations ([JSON](data/deepseek-v41-flash-8x72-tp8-clean.json)):
+
+| Workload | C1 | C4 | C8 | C16 | C32 | C64 |
+|---|---:|---:|---:|---:|---:|---:|
+| short 256/128 | 35.8 | 107.7 | **71.7** | 242.1 | 350.7 | **372.0** |
+| long 8192/256 | 34.1 | 101.3 | 131.5 | 184.7 | 211.9 | 218.9 |
+| 32K prefill (c1/c2/c4) | 15.1 | 19.7 | 22.7 | — | — | — |
+
+- **C8 is a reproducible dip, not noise**: 70.6-72.3 tok/s in all three launches, below C4 (107.7) and far below C16 (242.1). With the cache disabled the level is stable, so the 128% spread in the cache-on dataset came from cache state, not from scheduling.
+- **Prefix caching is worth ~34% of long-request throughput at C4** (154.5 -> 101.3) and **~48% at C8** (255.1 -> 131.5); short requests are unaffected (351 -> 351 at C32).
+- **32K prefill sets the ceiling**: 15.1 tok/s at C1 with a 1.9 s TTFT, 22.7 tok/s at C4.
+
+
 
 Throughput alone does not tell you what a user feels. The same MiniMax-M3.1-Flash run recorded TTFT and TPOT at every level:
 

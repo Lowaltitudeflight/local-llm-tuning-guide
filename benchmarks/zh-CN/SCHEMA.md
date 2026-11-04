@@ -35,6 +35,19 @@
 | `transferable` / `not_transferable` | 迁移边界 |
 | `submitted_by` | GitHub 用户名(first-party 填) |
 | `date` | 测量日期(YYYY-MM-DD;未知写 null,不要猜) |
+| `reproducibility` | 必填。`{status, commands_recorded, image_pinned, clocks_recorded, variance_runs, missing[], note?}`，见下 |
+
+## 可复现性字段
+
+每个文件都必须有，缺了 `tools/check_repo.py` 会直接失败。
+
+| `status` | 含义 | 要求 |
+|---|---|---|
+| `full` | 只靠这个文件就能重跑 | 命令、固定镜像 digest、时钟、方差齐全，`missing` 必须为空 |
+| `partial` | 在真实硬件上测过，但部分复现要素当时没记录 | `missing` 必须列出 |
+| `external-unverified` | 第三方数字，来源已无法定位 | `missing` 必须列出 |
+
+这个字段存在的原因：「测过」和「可复现」不是同一个声明。一份数据可以是真实测量，同时无法重跑——诚实的做法是写清楚缺什么，而不是让读者自己去发现。
 
 ## 实测 vs 推导
 

@@ -34,6 +34,7 @@ This chapter is the negative half of the library: configurations that **do not w
 | F-14 | AWQ weights with `--dtype bfloat16` | Start fails or precision is silently coerced | vLLM's AWQ kernels only declare fp16 activations | `never`. Use `--dtype float16` (or omit) |
 | F-15 | 72B BF16 on 4 × 72 GB with `--gpu-memory-utilization 0.99` | OOM at startup even though weights "fit" | 145 GB of weights + per-card workspace exceeds 4 × 72 × 0.99 | `never` at that size. 8 cards, or quantize |
 | F-16 | `--max-model-len` larger than what the KV pool can hold | `max seq len is larger than the maximum number of tokens that can be stored in KV cache` | The declared context cannot be served by the remaining VRAM | `never` for that pair. Lower the context or lower KV precision |
+| F-17 | DeepSeek-V4.1-Flash-1017 on **4 × 72 GB**, any `--mem-fraction-static` | OOM during weight load: `create_fp8_moe_weight_` → `Tried to allocate 1.05 GiB. GPU 1 has a total capacity of 71.12 GiB of which 384.00 KiB is free` | 476 GiB of weights ÷ 4 cards = **119 GiB per card**, against 71.12 GiB usable. The failure is arithmetic, not tuning | `never` on 4 × 72 GB. Needs 8 cards, or 4 × 141 GB (H200), or a ~250 GiB quant |
 
 ## 9.4 Configurations that run but mislead
 
@@ -47,6 +48,7 @@ These are the most expensive class: nothing crashes, the numbers look good, and 
 | F-23 | Comparing engines/quantizations at different `--max-tokens` or concurrency levels | "AWQ is 2× faster" | The comparison changed more than one variable |
 | F-24 | Benchmarking from the same machine as the server | Simpler setup | The load generator competes for CPU/PCIe and pollutes TTFT and P99 |
 | F-25 | `measured` KV/token figures that are actually `2 × layers × kv_heads × head_dim × bytes` | A precise-looking number | It is a derivation, not a measurement; label it `derived` and keep the formula visible |
+| F-26 | Short-request levels measured once, at c4–c16 | A smooth-looking concurrency curve | On DeepSeek-V4.1-Flash-1017 the same command produced **71.4 / 71.8 / 162.6 tok/s at c8** across three launches with prefix caching on (128% spread). With `--disable-radix-cache` the same level is stable at **70.6–72.3** across three launches — the spread was cache state, and c8 is a genuine dip rather than noise. Either way, one run per level cannot tell a configuration from a cache or scheduling artefact |
 
 ## 9.5 Adding an entry
 

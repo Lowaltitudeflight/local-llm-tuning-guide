@@ -35,6 +35,19 @@
 | `transferable` / `not_transferable` | Transfer boundaries |
 | `submitted_by` | GitHub username (for first-party) |
 | `date` | Measurement date (YYYY-MM-DD; write null if unknown, do not guess) |
+| `reproducibility` | Required. `{status, commands_recorded, image_pinned, clocks_recorded, variance_runs, missing[], note?}` — see below |
+
+## Reproducibility block
+
+Every file must carry it; `tools/check_repo.py` fails the build otherwise.
+
+| `status` | Meaning | Required |
+|---|---|---|
+| `full` | Someone can re-run this from the file alone | commands, pinned image digest, clocks, variance; `missing` must be empty |
+| `partial` | Measured on real hardware, but some reproduction inputs were not recorded | `missing` must list them |
+| `external-unverified` | Third-party number whose source could not be located | `missing` must list them |
+
+The block exists because "measured" and "reproducible" are not the same claim. A dataset can be a real measurement and still be impossible to re-run — the honest response is to say which parts are missing, not to leave the reader to discover it.
 
 ## Measured vs derived
 

@@ -13,6 +13,27 @@ python tools/planner.py --gpus RTX4090-24 --count 4 --params 35 --quant awq \
 
 planner 会把已有实测数据直接带进规划输出。
 
+## 每个数据集的可复现状态
+
+每个 JSON 现在都声明了复现它需要什么（`reproducibility` 字段，由 `tools/check_repo.py` 强制校验）：
+
+| 数据集 | 类型 | 状态 | 缺失 |
+|---|---|---|---|
+| [deepseek-v41-flash-8x72-tp8](../data/deepseek-v41-flash-8x72-tp8.json) | 第一方 | **完整** | — |
+| [deepseek-v41-flash-8x72-tp8-clean](../data/deepseek-v41-flash-8x72-tp8-clean.json) | 第一方 | **完整** | — |
+| [minimax-m31-flash-8x72-sm120](../data/minimax-m31-flash-8x72-sm120.json) | 第一方 | **完整** | — |
+| [glm53-flash-fp8-8card-tp8ep](../data/glm53-flash-fp8-8card-tp8ep.json) | 第一方 | 部分 | 命令、时钟策略、完整 digest、来源 |
+| [qwen38-27b-8x-72gb-pcie-parallelism](../data/qwen38-27b-8x-72gb-pcie-parallelism.json) | 第一方 | 部分 | 命令、时钟策略、固定镜像、来源 |
+| [qwen38-27b-bf16-singlecard-three-machines](../data/qwen38-27b-bf16-singlecard-three-machines.json) | 第一方 | 部分 | 命令、时钟策略、来源 |
+| [rtx3090-replicas-vs-tp](../data/rtx3090-replicas-vs-tp.json) | 外部 | 外部未核实 | 来源 URL、命令 |
+| [rtx6000-maxq-mtp-vs-dflash](../data/rtx6000-maxq-mtp-vs-dflash.json) | 外部 | 外部未核实 | 来源 URL、软件信息、命令 |
+
+- **完整** — 服务端与客户端命令、固定镜像 digest、时钟策略、方差全部记录。两个 DeepSeek-V4.1 数据集达到这个标准。
+- **部分** — 数据是在真实硬件上测的，但当时没有记录上列项目。可作方向参考，不能当复现配方。
+- **外部未核实** — 第三方数字，来源已无法定位，只能当作轶事。
+
+DeepSeek-V4.1 与 MiniMax-M3.1 已达到当前标准；MiniMax 的命令与每档请求数是从测量机上的归档 compose 与 bench 脚本里原样找回的。其余第一方条目在找回原始命令后同样可以升级——这个字段的意义就是把缺口显式化，而不是隐含。
+
 ## 本项目的实测数据
 
 | 硬件 | 模型 | 配置 | C1 输出 | C8 聚合 | 提交者 | 链接 |
@@ -60,6 +81,33 @@ Qwen3.8-27B BF16，TP1，vLLM 0.32.0 同 digest，输入 1024 / 输出 256（[JS
 - 前缀缓存是刚需：关闭后 c8–c64 吞吐下降 **20.5%–22.6%**，TTFT p50 变为 3.7–5.8 倍；`ctx32k_c4` 下降 **41.9%**。
 - 1M 上下文可用：冷启动 **999,988 token** 请求 **517.7 秒**完成，无 OOM；1,047,992 token 边界请求也成功。1M 请求占 1,329,280 token KV 池约 79%，基本只能跑 1 条。
 - 1M 配置的 C64 吞吐为 815.7 tok/s，比 128K 低约 23%（prefill 图关闭 + chunk 2048）。
+
+### DeepSeek-V4.1-Flash-1017（8× RTX PRO 5000 72GB，TP8+EP8，2026-11-03）
+
+476 GiB checkpoint（FP8 权重 + FP4 专家），TP8 + EP8，三次独立启动。
+短请求 = 256 输入 / 128 输出，长请求 = 8192 / 256；三次均值（[JSON](../data/deepseek-v41-flash-8x72-tp8.json)）：
+
+| 负载 | C1 | C4 | C8 | C16 | C32 |
+|---|---:|---:|---:|---:|---:|
+| 短，输出 tok/s | 35.6 | 112.4 | *不稳定* | 253.9 | **357.5** |
+| 长，输出 tok/s | 34.1 | 154.5 | **252.9** | 189.2 | 216.6 |
+
+- **长请求在 C8 达峰后回落**（C16 降到 189.2，TTFT p50 从 385 ms 涨到 1030 ms）：prefill 与 decode 抢同一批 SM。
+- **短请求曲线不可复现**：同一条命令三次启动，C8 得到 71.4 / 71.8 / 162.6 tok/s（128% 波动），而长请求各档只有 0.1~3.2%。不要把它当配置结论引用。
+- **这个 checkpoint 无法 TP4**：476 GiB ÷ 4 = 每卡 119 GiB，而可用只有 71.12 GiB；加载到 70.74 GiB 时 OOM（见 [09 失败的配置](../../docs/zh-CN/09-failures.md) F-17）。
+- **这套构建上 KV 是 785 B/token**（`max_total_num_tokens=12,443,136`，9.10 GiB），不是 GQA 公式预测的约 23 KiB。
+
+**关闭前缀缓存的干净复测（2026-11-03）。** 三次独立启动在全部 15 个配置上的差异只有 **0.2~3.4%**（[JSON](../data/deepseek-v41-flash-8x72-tp8-clean.json)）：
+
+| 负载 | C1 | C4 | C8 | C16 | C32 | C64 |
+|---|---:|---:|---:|---:|---:|---:|
+| 短 256/128 | 35.8 | 107.7 | **71.7** | 242.1 | 350.7 | **372.0** |
+| 长 8192/256 | 34.1 | 101.3 | 131.5 | 184.7 | 211.9 | 218.9 |
+| 32K 预填充（c1/c2/c4） | 15.1 | 19.7 | 22.7 | — | — | — |
+
+- **C8 是可复现的低谷，不是噪声**：三次都是 70.6~72.3 tok/s，低于 C4（107.7），远低于 C16（242.1）。关掉缓存后这一档就稳定了，说明 cache-on 数据集里 128% 的波动来自缓存状态，不是调度。
+- **前缀缓存对长请求的价值**：C4 从 154.5 降到 101.3（约 34%），C8 从 255.1 降到 131.5（约 48%）；短请求几乎不受影响（C32 351 → 351）。
+- **32K 预填充是天花板**：C1 只有 15.1 tok/s、TTFT 1.9 秒，C4 也只有 22.7 tok/s。
 
 ## 外部参考数据
 
