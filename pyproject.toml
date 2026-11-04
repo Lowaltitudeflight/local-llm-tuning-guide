@@ -1,3 +1,19 @@
+[project]
+# Metadata only: this repository ships documentation and scripts, not a
+# distributable package. Provenance and citation tooling read this block.
+name = "local-llm-tuning-guide"
+version = "0.3.0"
+description = "Decision library for multi-GPU LLM deployments without NVLink: topology-aware parallelism, quantization, speculative decoding, KV cache, recipes and reproducible benchmark data."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Lowaltitudeflight" }]
+keywords = ["llm", "inference", "pcie", "tensor-parallelism", "quantization", "benchmark"]
+
+[project.urls]
+Homepage = "https://github.com/Lowaltitudeflight/local-llm-tuning-guide"
+Documentation = "https://lowaltitudeflight.github.io/local-llm-tuning-guide/"
+
 [tool.ruff]
 line-length = 100
 target-version = "py39"
