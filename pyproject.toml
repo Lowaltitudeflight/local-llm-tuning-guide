@@ -2,7 +2,7 @@
 # Metadata only: this repository ships documentation and scripts, not a
 # distributable package. Provenance and citation tooling read this block.
 name = "local-llm-tuning-guide"
-version = "0.3.0"
+version = "0.3.1"
 description = "Decision library for multi-GPU LLM deployments without NVLink: topology-aware parallelism, quantization, speculative decoding, KV cache, recipes and reproducible benchmark data."
 readme = "README.md"
 requires-python = ">=3.9"
