@@ -25,7 +25,7 @@
  "model": {
   "name": "DeepSeek-V4.1-Flash-1017 (538B-class MoE, 40 layers, 384 routed experts / 6 active, MLA attention with Engram tables)",
   "quantization": "FP8 block 32x32 weights (ue8m0 scales) + FP4 packed experts (expert_dtype=fp4); 476 GiB on disk",
-  "revision": null
+  "revision": "local checkpoint at /models2/DeepSeek-V4.1-Flash-1017 (config overlay -cfg0); upstream revision not recorded, so a reproducer needs the same checkpoint"
  },
  "workload": {
   "concurrency": [
