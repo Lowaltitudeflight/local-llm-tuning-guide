@@ -367,5 +367,13 @@
   "TP4 is impossible for this checkpoint on 4 x 72 GB: 476 GiB / 4 = 119 GiB per card against 71.12 GiB usable, and the load OOMs at 70.74 GiB. See docs/09-failures.md F-16",
   "Absolute numbers depend on the exact image digest, driver/CUDA, the three SM120 patches, and --max-running-requests 32 (the production compose uses 8)"
  ],
- "submitted_by": "Lowaltitudeflight"
+ "submitted_by": "Lowaltitudeflight",
+ "reproducibility": {
+  "status": "full",
+  "commands_recorded": true,
+  "image_pinned": true,
+  "clocks_recorded": true,
+  "variance_runs": 3,
+  "missing": []
+ }
 }

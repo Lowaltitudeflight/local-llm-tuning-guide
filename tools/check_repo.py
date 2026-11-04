@@ -166,6 +166,28 @@ def check_benchmarks() -> List[str]:
                     errors.append(f"{name}: first-party data needs {key}")
         if not isinstance(data.get("results"), list) or not data["results"]:
             errors.append(f"{name}: results must be a non-empty list")
+
+        repro = data.get("reproducibility")
+        if not isinstance(repro, dict):
+            errors.append(f"{name}: missing reproducibility block")
+        else:
+            status = repro.get("status")
+            if status not in ("full", "partial", "external-unverified"):
+                errors.append(
+                    f"{name}: reproducibility.status must be full / partial / external-unverified"
+                )
+            elif status == "full":
+                for key in ("commands_recorded", "image_pinned", "clocks_recorded"):
+                    if not repro.get(key):
+                        errors.append(
+                            f"{name}: status=full but reproducibility.{key} is false"
+                        )
+                if repro.get("missing"):
+                    errors.append(f"{name}: status=full must have an empty 'missing' list")
+            elif not repro.get("missing"):
+                errors.append(
+                    f"{name}: status={status} needs a non-empty 'missing' list"
+                )
     return errors
 
 

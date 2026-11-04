@@ -1,255 +1,294 @@
 {
-  "schema": "lltg.benchmark.v1",
-  "id": "minimax-m31-flash-8x72-sm120",
-  "kind": "first-party",
-  "title": "MiniMax-M3.1-Flash NVFP4 on 8x RTX PRO 5000 72GB (SM120, PCIe, dual NUMA): Marlin workaround, C1-C64 matrix, cache on/off, 1M context",
-  "date": "2026-11-02",
-  "hardware": {
-    "gpus": "8 x NVIDIA RTX PRO 5000 72GB Blackwell (SM120)",
-    "vram_gb_per_gpu": 72,
-    "power_limit": "300 W per GPU",
-    "interconnect": "PCIe only, no NVLink; GPU0-3 NODE within NUMA0, GPU4-7 NODE within NUMA1, cross-group SYS",
-    "topology_summary": "nvidia-smi topo -m: 4+4 GPUs split across two CPU sockets; all cross-group links report SYS",
-    "cpu_numa": "2 x Xeon Platinum 8488C, 192 threads; GPU0-3 -> NUMA0, GPU4-7 -> NUMA1; 1.5 TB RAM"
-  },
-  "software": {
-    "driver": "595.71.05",
-    "cuda": "13.4 (container runtime)",
-    "nccl": null,
-    "framework": "SGLang",
-    "framework_version": "0.0.0.dev0",
-    "image": "lmsysorg/sglang:dev-minimax-m31-flash (pulled 2026-10-30)"
-  },
-  "model": {
-    "name": "MiniMax-M3.1-Flash (428B total / 23B active MoE, text/image/video input, 1M context)",
-    "quantization": "MXFP8 dense + NVFP4 packed experts (moe_quant_format=nvfp4-pack-quantized), served as minimax_m3_nvfp4 via Marlin",
-    "revision": null
-  },
-  "workload": {
-    "concurrency": [1, 8, 32, 64],
-    "input_tokens": 1024,
-    "output_tokens": 256,
-    "sampling": "temperature 0, ignore_eos, seed 42",
-    "server_notes": "SGLang TP8 + Marlin; --attention-backend triton --chunked-prefill-size 2048 --mem-fraction-static 0.85; cache-on runs use radix cache, cache-off runs use --disable-radix-cache; SM120 requires three read-only patches (see recipes/8x-72gb-pcie.md Case C)"
-  },
-  "results": [
-    {
-      "config": "c1 (cache-on, 3-run mean)",
-      "metrics": {
-        "output_c1_toks": 94.4,
-        "total_toks": 471.8,
-        "ttft_c1_ms": 195.2,
-        "ttft_p99_ms": 210.0,
-        "tpot_c1_ms": 9.9,
-        "tpot_p99_ms": 9.9
-      }
-    },
-    {
-      "config": "c8 (cache-on, 3-run mean)",
-      "metrics": {
-        "aggregate_c8_toks": 489.8,
-        "total_toks": 2449.2,
-        "ttft_c8_ms": 226.7,
-        "ttft_p99_ms": 368.0,
-        "tpot_c8_ms": 15.5,
-        "tpot_p99_ms": 16.3
-      }
-    },
-    {
-      "config": "c32 (cache-on, 3-run mean)",
-      "metrics": {
-        "aggregate_c32_toks": 740.4,
-        "total_toks": 3702.1,
-        "ttft_c32_ms": 800.0,
-        "ttft_p99_ms": 5190.0,
-        "tpot_c32_ms": 35.1,
-        "tpot_p99_ms": 52.6
-      }
-    },
-    {
-      "config": "c64 (cache-on, 3-run mean)",
-      "metrics": {
-        "aggregate_c64_toks": 1060.8,
-        "total_toks": 5303.8,
-        "ttft_c64_ms": 1579.0,
-        "ttft_p99_ms": 10320.0,
-        "tpot_c64_ms": 40.8,
-        "tpot_p99_ms": 75.6
-      }
-    },
-    {
-      "config": "ctx32k_c1 (32768 input, cache-on, 3-run mean)",
-      "metrics": {
-        "output_c1_toks": 31.1,
-        "total_toks": 4018.2,
-        "ttft_c1_ms": 5631.7,
-        "ttft_p99_ms": 5821.0,
-        "tpot_c1_ms": 11.2,
-        "tpot_p99_ms": 11.7
-      }
-    },
-    {
-      "config": "ctx32k_c4 (32768 input, cache-on, 3-run mean)",
-      "metrics": {
-        "aggregate_c4_toks": 67.5,
-        "total_toks": 8708.1,
-        "ttft_c4_ms": 3328.0,
-        "ttft_p99_ms": 22442.0,
-        "tpot_c4_ms": 14.7,
-        "tpot_p99_ms": 79.9
-      }
-    },
-    {
-      "config": "sharegpt_c64 (cache-on, 3-run mean)",
-      "metrics": {
-        "aggregate_c64_toks": 1093.8,
-        "total_toks": 2291.8,
-        "ttft_c64_ms": 146.0,
-        "ttft_p99_ms": 2394.0,
-        "tpot_c64_ms": 55.2,
-        "tpot_p99_ms": 87.4
-      }
-    },
-    {
-      "config": "c1 (cache-off, 1 run)",
-      "metrics": {
-        "output_c1_toks": 94.9,
-        "total_toks": 474.5,
-        "ttft_c1_ms": 195.0,
-        "ttft_p99_ms": 207.0,
-        "tpot_c1_ms": 9.8,
-        "tpot_p99_ms": 9.8
-      }
-    },
-    {
-      "config": "c8 (cache-off, 1 run)",
-      "metrics": {
-        "aggregate_c8_toks": 383.3,
-        "total_toks": 1916.4,
-        "ttft_c8_ms": 1315.0,
-        "ttft_p99_ms": 1441.0,
-        "tpot_c8_ms": 15.8,
-        "tpot_p99_ms": 20.2
-      }
-    },
-    {
-      "config": "c32 (cache-off, 1 run)",
-      "metrics": {
-        "aggregate_c32_toks": 588.3,
-        "total_toks": 2941.7,
-        "ttft_c32_ms": 3207.0,
-        "ttft_p99_ms": 5181.0,
-        "tpot_c32_ms": 41.9,
-        "tpot_p99_ms": 53.5
-      }
-    },
-    {
-      "config": "c64 (cache-off, 1 run)",
-      "metrics": {
-        "aggregate_c64_toks": 821.0,
-        "total_toks": 4105.1,
-        "ttft_c64_ms": 5795.0,
-        "ttft_p99_ms": 10276.0,
-        "tpot_c64_ms": 55.4,
-        "tpot_p99_ms": 76.4
-      }
-    },
-    {
-      "config": "ctx32k_c1 (cache-off, 1 run)",
-      "metrics": {
-        "output_c1_toks": 29.9,
-        "total_toks": 3854.6,
-        "ttft_c1_ms": 5767.0,
-        "ttft_p99_ms": 5825.0,
-        "tpot_c1_ms": 11.0,
-        "tpot_p99_ms": 11.6
-      }
-    },
-    {
-      "config": "ctx32k_c4 (cache-off, 1 run)",
-      "metrics": {
-        "aggregate_c4_toks": 39.2,
-        "total_toks": 5058.6,
-        "ttft_c4_ms": 14155.0,
-        "ttft_p99_ms": 22334.0,
-        "tpot_c4_ms": 46.7,
-        "tpot_p99_ms": 79.8
-      }
-    },
-    {
-      "config": "sharegpt_c64 (cache-off, 1 run)",
-      "metrics": {
-        "aggregate_c64_toks": 1084.1,
-        "total_toks": 2271.4,
-        "ttft_c64_ms": 146.0,
-        "ttft_p99_ms": 2376.0,
-        "tpot_c64_ms": 55.7,
-        "tpot_p99_ms": 96.7
-      }
-    },
-    {
-      "config": "1M context cold request (context-length 1048576)",
-      "metrics": {
-        "prompt_tokens": 999988,
-        "completion_tokens": 16,
-        "e2e_s": 517.7,
-        "success": true
-      }
-    },
-    {
-      "config": "1M boundary request (context-length 1048576, warm prefix)",
-      "metrics": {
-        "prompt_tokens": 1047992,
-        "completion_tokens": 8,
-        "e2e_s": 49.5,
-        "success": true
-      }
-    },
-    {
-      "config": "c64 at 1M context (chunk 2048, prefill graph disabled)",
-      "metrics": {
-        "aggregate_c64_toks": 815.7,
-        "ttft_c64_ms": 5584.0,
-        "tpot_c64_ms": 56.9
-      }
-    },
-    {
-      "config": "ctx32k_c1 at 1M context (chunk 2048, prefill graph disabled)",
-      "metrics": {
-        "output_c1_toks": 30.6,
-        "ttft_c1_ms": 5912.0,
-        "tpot_c1_ms": 10.7
-      }
-    }
+ "schema": "lltg.benchmark.v1",
+ "id": "minimax-m31-flash-8x72-sm120",
+ "kind": "first-party",
+ "title": "MiniMax-M3.1-Flash NVFP4 on 8x RTX PRO 5000 72GB (SM120, PCIe, dual NUMA): Marlin workaround, C1-C64 matrix, cache on/off, 1M context",
+ "date": "2026-11-02",
+ "hardware": {
+  "gpus": "8 x NVIDIA RTX PRO 5000 72GB Blackwell (SM120)",
+  "vram_gb_per_gpu": 72,
+  "power_limit": "300 W per GPU",
+  "interconnect": "PCIe only, no NVLink; GPU0-3 NODE within NUMA0, GPU4-7 NODE within NUMA1, cross-group SYS",
+  "topology_summary": "nvidia-smi topo -m: 4+4 GPUs split across two CPU sockets; all cross-group links report SYS",
+  "cpu_numa": "2 x Xeon Platinum 8488C, 192 threads; GPU0-3 -> NUMA0, GPU4-7 -> NUMA1; 1.5 TB RAM"
+ },
+ "software": {
+  "driver": "595.71.05",
+  "cuda": "13.4 (container runtime)",
+  "nccl": null,
+  "framework": "SGLang",
+  "framework_version": "0.0.0.dev0",
+  "image": "lmsysorg/sglang:dev-minimax-m31-flash (pulled 2026-10-30)"
+ },
+ "model": {
+  "name": "MiniMax-M3.1-Flash (428B total / 23B active MoE, text/image/video input, 1M context)",
+  "quantization": "MXFP8 dense + NVFP4 packed experts (moe_quant_format=nvfp4-pack-quantized), served as minimax_m3_nvfp4 via Marlin",
+  "revision": null
+ },
+ "workload": {
+  "concurrency": [
+   1,
+   8,
+   32,
+   64
   ],
-  "variance": {
-    "note": "cache-on: 3 independent launches per label; output throughput spread 0.07%-2.11%. cache-off: 1 launch per label.",
-    "output_toks": {
-      "c1": {"min": 94.0, "max": 94.6},
-      "c8": {"min": 489.4, "max": 490.2},
-      "c32": {"min": 736.0, "max": 747.2},
-      "c64": {"min": 1060.4, "max": 1061.1},
-      "ctx32k_c1": {"min": 30.9, "max": 31.6},
-      "ctx32k_c4": {"min": 67.2, "max": 67.8},
-      "sharegpt_c64": {"min": 1093.4, "max": 1094.4}
-    }
+  "input_tokens": 1024,
+  "output_tokens": 256,
+  "sampling": "temperature 0, ignore_eos, seed 42",
+  "server_notes": "SGLang TP8 + Marlin; --attention-backend triton --chunked-prefill-size 2048 --mem-fraction-static 0.85; cache-on runs use radix cache, cache-off runs use --disable-radix-cache; SM120 requires three read-only patches (see recipes/8x-72gb-pcie.md Case C)"
+ },
+ "results": [
+  {
+   "config": "c1 (cache-on, 3-run mean)",
+   "metrics": {
+    "output_c1_toks": 94.4,
+    "total_toks": 471.8,
+    "ttft_c1_ms": 195.2,
+    "ttft_p99_ms": 210.0,
+    "tpot_c1_ms": 9.9,
+    "tpot_p99_ms": 9.9
+   }
   },
-  "methodology": "vllm bench serve --backend openai (OpenAI completions), random dataset input 1024 / output 256 (ctx32k: 32768/256; sharegpt: ShareGPT_V3), ignore_eos, temperature 0, seed 42, warmups 10 (ctx32k: 2); cache-on 3 launches, cache-off 1 launch per label; 21 cache-on + 7 cache-off runs, 9,680 requests total, 0 failed; 1M context runs use --context-length 1048576 with chunked-prefill 2048 and prefill CUDA graph disabled.",
-  "source": {
-    "project": "local-llm-tuning-guide first-party measurement (zkyd machine)",
-    "url": "https://github.com/Lowaltitudeflight/local-llm-tuning-guide"
+  {
+   "config": "c8 (cache-on, 3-run mean)",
+   "metrics": {
+    "aggregate_c8_toks": 489.8,
+    "total_toks": 2449.2,
+    "ttft_c8_ms": 226.7,
+    "ttft_p99_ms": 368.0,
+    "tpot_c8_ms": 15.5,
+    "tpot_p99_ms": 16.3
+   }
   },
-  "transferable": [
-    "On 8x RTX PRO 5000 72GB (SM120, PCIe, dual NUMA), MiniMax-M3.1-Flash NVFP4 can serve via the Marlin workaround; C64 aggregate reached 1060.8 tok/s in this configuration",
-    "Prefix cache matters: disabling it cut c8-c64 throughput by 20.5%-22.6% and raised TTFT p50 3.7x-5.8x; ctx32k_c4 throughput dropped 41.9%",
-    "1M context is functional: a cold 999,988-token request completed in 517.7 s without OOM; one 1M request consumes ~79% of the 1,329,280-token KV pool, so 1M concurrency is effectively 1",
-    "Enabling 1M costs ~23% C64 throughput (815.7 vs 1060.8 tok/s) because prefill graphs are disabled and chunked prefill drops to 2048"
-  ],
-  "not_transferable": [
-    "Absolute numbers depend on the exact image (dev-minimax-m31-flash), driver/CUDA, and the three SM120 patches",
-    "This is the Marlin bf16-compute path, not the SM100 MegaMoE path; SM100/SM103 numbers will differ",
-    "The 1M cold-start timing is dominated by prefill at chunk 2048 and will change with chunk size, context length, and prompt content",
-    "Results use the completions endpoint (no chat template / reasoning tokens); chat or agent workloads with thinking enabled will be slower per answer"
-  ],
-  "submitted_by": "Lowaltitudeflight"
+  {
+   "config": "c32 (cache-on, 3-run mean)",
+   "metrics": {
+    "aggregate_c32_toks": 740.4,
+    "total_toks": 3702.1,
+    "ttft_c32_ms": 800.0,
+    "ttft_p99_ms": 5190.0,
+    "tpot_c32_ms": 35.1,
+    "tpot_p99_ms": 52.6
+   }
+  },
+  {
+   "config": "c64 (cache-on, 3-run mean)",
+   "metrics": {
+    "aggregate_c64_toks": 1060.8,
+    "total_toks": 5303.8,
+    "ttft_c64_ms": 1579.0,
+    "ttft_p99_ms": 10320.0,
+    "tpot_c64_ms": 40.8,
+    "tpot_p99_ms": 75.6
+   }
+  },
+  {
+   "config": "ctx32k_c1 (32768 input, cache-on, 3-run mean)",
+   "metrics": {
+    "output_c1_toks": 31.1,
+    "total_toks": 4018.2,
+    "ttft_c1_ms": 5631.7,
+    "ttft_p99_ms": 5821.0,
+    "tpot_c1_ms": 11.2,
+    "tpot_p99_ms": 11.7
+   }
+  },
+  {
+   "config": "ctx32k_c4 (32768 input, cache-on, 3-run mean)",
+   "metrics": {
+    "aggregate_c4_toks": 67.5,
+    "total_toks": 8708.1,
+    "ttft_c4_ms": 3328.0,
+    "ttft_p99_ms": 22442.0,
+    "tpot_c4_ms": 14.7,
+    "tpot_p99_ms": 79.9
+   }
+  },
+  {
+   "config": "sharegpt_c64 (cache-on, 3-run mean)",
+   "metrics": {
+    "aggregate_c64_toks": 1093.8,
+    "total_toks": 2291.8,
+    "ttft_c64_ms": 146.0,
+    "ttft_p99_ms": 2394.0,
+    "tpot_c64_ms": 55.2,
+    "tpot_p99_ms": 87.4
+   }
+  },
+  {
+   "config": "c1 (cache-off, 1 run)",
+   "metrics": {
+    "output_c1_toks": 94.9,
+    "total_toks": 474.5,
+    "ttft_c1_ms": 195.0,
+    "ttft_p99_ms": 207.0,
+    "tpot_c1_ms": 9.8,
+    "tpot_p99_ms": 9.8
+   }
+  },
+  {
+   "config": "c8 (cache-off, 1 run)",
+   "metrics": {
+    "aggregate_c8_toks": 383.3,
+    "total_toks": 1916.4,
+    "ttft_c8_ms": 1315.0,
+    "ttft_p99_ms": 1441.0,
+    "tpot_c8_ms": 15.8,
+    "tpot_p99_ms": 20.2
+   }
+  },
+  {
+   "config": "c32 (cache-off, 1 run)",
+   "metrics": {
+    "aggregate_c32_toks": 588.3,
+    "total_toks": 2941.7,
+    "ttft_c32_ms": 3207.0,
+    "ttft_p99_ms": 5181.0,
+    "tpot_c32_ms": 41.9,
+    "tpot_p99_ms": 53.5
+   }
+  },
+  {
+   "config": "c64 (cache-off, 1 run)",
+   "metrics": {
+    "aggregate_c64_toks": 821.0,
+    "total_toks": 4105.1,
+    "ttft_c64_ms": 5795.0,
+    "ttft_p99_ms": 10276.0,
+    "tpot_c64_ms": 55.4,
+    "tpot_p99_ms": 76.4
+   }
+  },
+  {
+   "config": "ctx32k_c1 (cache-off, 1 run)",
+   "metrics": {
+    "output_c1_toks": 29.9,
+    "total_toks": 3854.6,
+    "ttft_c1_ms": 5767.0,
+    "ttft_p99_ms": 5825.0,
+    "tpot_c1_ms": 11.0,
+    "tpot_p99_ms": 11.6
+   }
+  },
+  {
+   "config": "ctx32k_c4 (cache-off, 1 run)",
+   "metrics": {
+    "aggregate_c4_toks": 39.2,
+    "total_toks": 5058.6,
+    "ttft_c4_ms": 14155.0,
+    "ttft_p99_ms": 22334.0,
+    "tpot_c4_ms": 46.7,
+    "tpot_p99_ms": 79.8
+   }
+  },
+  {
+   "config": "sharegpt_c64 (cache-off, 1 run)",
+   "metrics": {
+    "aggregate_c64_toks": 1084.1,
+    "total_toks": 2271.4,
+    "ttft_c64_ms": 146.0,
+    "ttft_p99_ms": 2376.0,
+    "tpot_c64_ms": 55.7,
+    "tpot_p99_ms": 96.7
+   }
+  },
+  {
+   "config": "1M context cold request (context-length 1048576)",
+   "metrics": {
+    "prompt_tokens": 999988,
+    "completion_tokens": 16,
+    "e2e_s": 517.7,
+    "success": true
+   }
+  },
+  {
+   "config": "1M boundary request (context-length 1048576, warm prefix)",
+   "metrics": {
+    "prompt_tokens": 1047992,
+    "completion_tokens": 8,
+    "e2e_s": 49.5,
+    "success": true
+   }
+  },
+  {
+   "config": "c64 at 1M context (chunk 2048, prefill graph disabled)",
+   "metrics": {
+    "aggregate_c64_toks": 815.7,
+    "ttft_c64_ms": 5584.0,
+    "tpot_c64_ms": 56.9
+   }
+  },
+  {
+   "config": "ctx32k_c1 at 1M context (chunk 2048, prefill graph disabled)",
+   "metrics": {
+    "output_c1_toks": 30.6,
+    "ttft_c1_ms": 5912.0,
+    "tpot_c1_ms": 10.7
+   }
+  }
+ ],
+ "variance": {
+  "note": "cache-on: 3 independent launches per label; output throughput spread 0.07%-2.11%. cache-off: 1 launch per label.",
+  "output_toks": {
+   "c1": {
+    "min": 94.0,
+    "max": 94.6
+   },
+   "c8": {
+    "min": 489.4,
+    "max": 490.2
+   },
+   "c32": {
+    "min": 736.0,
+    "max": 747.2
+   },
+   "c64": {
+    "min": 1060.4,
+    "max": 1061.1
+   },
+   "ctx32k_c1": {
+    "min": 30.9,
+    "max": 31.6
+   },
+   "ctx32k_c4": {
+    "min": 67.2,
+    "max": 67.8
+   },
+   "sharegpt_c64": {
+    "min": 1093.4,
+    "max": 1094.4
+   }
+  }
+ },
+ "methodology": "vllm bench serve --backend openai (OpenAI completions), random dataset input 1024 / output 256 (ctx32k: 32768/256; sharegpt: ShareGPT_V3), ignore_eos, temperature 0, seed 42, warmups 10 (ctx32k: 2); cache-on 3 launches, cache-off 1 launch per label; 21 cache-on + 7 cache-off runs, 9,680 requests total, 0 failed; 1M context runs use --context-length 1048576 with chunked-prefill 2048 and prefill CUDA graph disabled.",
+ "source": {
+  "project": "local-llm-tuning-guide first-party measurement (zkyd machine)",
+  "url": "https://github.com/Lowaltitudeflight/local-llm-tuning-guide"
+ },
+ "transferable": [
+  "On 8x RTX PRO 5000 72GB (SM120, PCIe, dual NUMA), MiniMax-M3.1-Flash NVFP4 can serve via the Marlin workaround; C64 aggregate reached 1060.8 tok/s in this configuration",
+  "Prefix cache matters: disabling it cut c8-c64 throughput by 20.5%-22.6% and raised TTFT p50 3.7x-5.8x; ctx32k_c4 throughput dropped 41.9%",
+  "1M context is functional: a cold 999,988-token request completed in 517.7 s without OOM; one 1M request consumes ~79% of the 1,329,280-token KV pool, so 1M concurrency is effectively 1",
+  "Enabling 1M costs ~23% C64 throughput (815.7 vs 1060.8 tok/s) because prefill graphs are disabled and chunked prefill drops to 2048"
+ ],
+ "not_transferable": [
+  "Absolute numbers depend on the exact image (dev-minimax-m31-flash), driver/CUDA, and the three SM120 patches",
+  "This is the Marlin bf16-compute path, not the SM100 MegaMoE path; SM100/SM103 numbers will differ",
+  "The 1M cold-start timing is dominated by prefill at chunk 2048 and will change with chunk size, context length, and prompt content",
+  "Results use the completions endpoint (no chat template / reasoning tokens); chat or agent workloads with thinking enabled will be slower per answer"
+ ],
+ "submitted_by": "Lowaltitudeflight",
+ "reproducibility": {
+  "status": "partial",
+  "commands_recorded": false,
+  "image_pinned": false,
+  "clocks_recorded": false,
+  "variance_runs": 3,
+  "missing": [
+   "server and client commands",
+   "clock policy",
+   "image digest (tag only)",
+   "the current compose on the host is TP4/port 8400, not the measured TP8 layout"
+  ]
+ }
 }

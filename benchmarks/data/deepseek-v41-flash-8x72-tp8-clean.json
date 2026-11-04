@@ -531,5 +531,13 @@
   "Output length is model-determined (~47 / ~119 tokens); ignore_eos and min_tokens do not force the cap on this build",
   "Compared with the cache-on dataset, long-request aggregate throughput at c4 drops from 154.5 to ~101 tok/s: prefix caching is worth roughly a third of long-request throughput on this workload"
  ],
- "submitted_by": "Lowaltitudeflight"
+ "submitted_by": "Lowaltitudeflight",
+ "reproducibility": {
+  "status": "full",
+  "commands_recorded": true,
+  "image_pinned": true,
+  "clocks_recorded": true,
+  "variance_runs": 3,
+  "missing": []
+ }
 }

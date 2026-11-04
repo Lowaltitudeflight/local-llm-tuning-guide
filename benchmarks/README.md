@@ -13,7 +13,28 @@ python tools/planner.py --gpus RTX4090-24 --count 4 --params 35 --quant awq \
 
 The planner feeds existing measured data directly into its planning output.
 
-## First-party measurements from this project
+## Reproducibility status of every dataset
+
+Every JSON now declares what it takes to reproduce it (`reproducibility` block, enforced by `tools/check_repo.py`):
+
+| Dataset | Kind | Status | Missing |
+|---|---|---|---|
+| [deepseek-v41-flash-8x72-tp8](data/deepseek-v41-flash-8x72-tp8.json) | first-party | **full** | — |
+| [deepseek-v41-flash-8x72-tp8-clean](data/deepseek-v41-flash-8x72-tp8-clean.json) | first-party | **full** | — |
+| [minimax-m31-flash-8x72-sm120](data/minimax-m31-flash-8x72-sm120.json) | first-party | partial | server/client command, clock policy, image digest |
+| [glm53-flash-fp8-8card-tp8ep](data/glm53-flash-fp8-8card-tp8ep.json) | first-party | partial | commands, clock policy, full digest, source |
+| [qwen38-27b-8x-72gb-pcie-parallelism](data/qwen38-27b-8x-72gb-pcie-parallelism.json) | first-party | partial | commands, clock policy, pinned image, source |
+| [qwen38-27b-bf16-singlecard-three-machines](data/qwen38-27b-bf16-singlecard-three-machines.json) | first-party | partial | commands, clock policy, source |
+| [rtx3090-replicas-vs-tp](data/rtx3090-replicas-vs-tp.json) | external | external-unverified | source URL, commands |
+| [rtx6000-maxq-mtp-vs-dflash](data/rtx6000-maxq-mtp-vs-dflash.json) | external | external-unverified | source URL, software block, commands |
+
+- **full** — server and client commands, a pinned image digest, clock policy and variance are all recorded. The two DeepSeek-V4.1 datasets meet this bar.
+- **partial** — the numbers were measured on real hardware, but the listed items were not recorded at the time. They are still usable as direction, not as a reproduction recipe.
+- **external-unverified** — third-party numbers whose source could not be located; treat as anecdote.
+
+The DS4.1 datasets are the first entries written to the current bar. Older first-party entries can be upgraded if the original commands are recovered — the field is meant to make that gap visible instead of implied.
+
+
 
 | Hardware | Model | Configuration | C1 output | C8 aggregate | Submitter | Link |
 |---|---|---|---|---|---|---|

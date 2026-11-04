@@ -13,6 +13,27 @@ python tools/planner.py --gpus RTX4090-24 --count 4 --params 35 --quant awq \
 
 planner 会把已有实测数据直接带进规划输出。
 
+## 每个数据集的可复现状态
+
+每个 JSON 现在都声明了复现它需要什么（`reproducibility` 字段，由 `tools/check_repo.py` 强制校验）：
+
+| 数据集 | 类型 | 状态 | 缺失 |
+|---|---|---|---|
+| [deepseek-v41-flash-8x72-tp8](../data/deepseek-v41-flash-8x72-tp8.json) | 第一方 | **完整** | — |
+| [deepseek-v41-flash-8x72-tp8-clean](../data/deepseek-v41-flash-8x72-tp8-clean.json) | 第一方 | **完整** | — |
+| [minimax-m31-flash-8x72-sm120](../data/minimax-m31-flash-8x72-sm120.json) | 第一方 | 部分 | 服务端/客户端命令、时钟策略、镜像 digest |
+| [glm53-flash-fp8-8card-tp8ep](../data/glm53-flash-fp8-8card-tp8ep.json) | 第一方 | 部分 | 命令、时钟策略、完整 digest、来源 |
+| [qwen38-27b-8x-72gb-pcie-parallelism](../data/qwen38-27b-8x-72gb-pcie-parallelism.json) | 第一方 | 部分 | 命令、时钟策略、固定镜像、来源 |
+| [qwen38-27b-bf16-singlecard-three-machines](../data/qwen38-27b-bf16-singlecard-three-machines.json) | 第一方 | 部分 | 命令、时钟策略、来源 |
+| [rtx3090-replicas-vs-tp](../data/rtx3090-replicas-vs-tp.json) | 外部 | 外部未核实 | 来源 URL、命令 |
+| [rtx6000-maxq-mtp-vs-dflash](../data/rtx6000-maxq-mtp-vs-dflash.json) | 外部 | 外部未核实 | 来源 URL、软件信息、命令 |
+
+- **完整** — 服务端与客户端命令、固定镜像 digest、时钟策略、方差全部记录。两个 DeepSeek-V4.1 数据集达到这个标准。
+- **部分** — 数据是在真实硬件上测的，但当时没有记录上列项目。可作方向参考，不能当复现配方。
+- **外部未核实** — 第三方数字，来源已无法定位，只能当作轶事。
+
+DeepSeek-V4.1 是第一批按当前标准写入的条目。旧的第一方条目在找回原始命令后可以升级——这个字段的意义就是把缺口显式化，而不是隐含。
+
 ## 本项目的实测数据
 
 | 硬件 | 模型 | 配置 | C1 输出 | C8 聚合 | 提交者 | 链接 |

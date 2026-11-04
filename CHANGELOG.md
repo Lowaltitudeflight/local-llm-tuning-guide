@@ -8,6 +8,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **Reproducibility metadata on every dataset.** Each JSON now carries a `reproducibility`
+  block (`full` / `partial` / `external-unverified`, what is missing, how many launches), and
+  `tools/check_repo.py` fails the build if a `full` entry lacks commands, a pinned image digest
+  or a clock policy. Current state: 2 full (the two DeepSeek-V4.1 runs), 4 partial (older
+  first-party data without recorded commands/clocks), 2 external-unverified (no source URL).
+- `benchmarks/README.md` and its zh-CN counterpart now carry the per-dataset status table, so a
+  reader can see which numbers are a reproduction recipe and which are direction only.
+
 - **First DeepSeek-V4.1-Flash-1017 dataset** (`benchmarks/data/deepseek-v41-flash-8x72-tp8.json`):
   8× RTX PRO 5000 72GB, TP8+EP8, short (256/128) and long (8192/256) matrices at C1–C32,
   three independent launches with per-config variance arrays.
