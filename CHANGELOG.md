@@ -13,6 +13,10 @@ All notable changes to this project are recorded here. The format follows
   `tools/check_repo.py` fails the build if a `full` entry lacks commands, a pinned image digest
   or a clock policy. Current state: 2 full (the two DeepSeek-V4.1 runs), 4 partial (older
   first-party data without recorded commands/clocks), 2 external-unverified (no source URL).
+- **MiniMax-M3.1-Flash dataset upgraded to `full`.** The launch command, the per-level
+  request counts (200/200/320/640/20/40/1000 prompts, 9,680 requests total) and both image
+  digests were recovered verbatim from the archived compose and bench script on the
+  measurement host, so the 2026-11-02 run can be re-executed instead of merely read.
 - `benchmarks/README.md` and its zh-CN counterpart now carry the per-dataset status table, so a
   reader can see which numbers are a reproduction recipe and which are direction only.
 

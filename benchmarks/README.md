@@ -21,7 +21,7 @@ Every JSON now declares what it takes to reproduce it (`reproducibility` block, 
 |---|---|---|---|
 | [deepseek-v41-flash-8x72-tp8](data/deepseek-v41-flash-8x72-tp8.json) | first-party | **full** | — |
 | [deepseek-v41-flash-8x72-tp8-clean](data/deepseek-v41-flash-8x72-tp8-clean.json) | first-party | **full** | — |
-| [minimax-m31-flash-8x72-sm120](data/minimax-m31-flash-8x72-sm120.json) | first-party | partial | server/client command, clock policy, image digest |
+| [minimax-m31-flash-8x72-sm120](data/minimax-m31-flash-8x72-sm120.json) | first-party | **full** | — |
 | [glm53-flash-fp8-8card-tp8ep](data/glm53-flash-fp8-8card-tp8ep.json) | first-party | partial | commands, clock policy, full digest, source |
 | [qwen38-27b-8x-72gb-pcie-parallelism](data/qwen38-27b-8x-72gb-pcie-parallelism.json) | first-party | partial | commands, clock policy, pinned image, source |
 | [qwen38-27b-bf16-singlecard-three-machines](data/qwen38-27b-bf16-singlecard-three-machines.json) | first-party | partial | commands, clock policy, source |
@@ -32,7 +32,7 @@ Every JSON now declares what it takes to reproduce it (`reproducibility` block, 
 - **partial** — the numbers were measured on real hardware, but the listed items were not recorded at the time. They are still usable as direction, not as a reproduction recipe.
 - **external-unverified** — third-party numbers whose source could not be located; treat as anecdote.
 
-The DS4.1 datasets are the first entries written to the current bar. Older first-party entries can be upgraded if the original commands are recovered — the field is meant to make that gap visible instead of implied.
+The DeepSeek-V4.1 and MiniMax-M3.1 entries meet the current bar; the MiniMax commands and per-level request counts were recovered from the archived launch compose and bench script on the measurement host. The remaining first-party entries can be upgraded the same way if their original commands are recovered — the field is meant to make that gap visible instead of implied.
 
 
 
