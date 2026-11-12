@@ -21,7 +21,7 @@
 | GLM-5.3-Flash | ~355B | FP8 | ~306 GB | ~96 KiB (fp8 KV) † | 6–8 | TP8 + EP8 | [GLM TP8+EP8 数据](benchmarks/zh-CN/README.md) |
 | GLM-5.3-Flash | ~355B | NVFP4 | ~190 GB | ~96 KiB (fp8 KV) † | 4–6 | TP4/TP8 + EP；实测 | 推导 |
 | MiniMax-M3.1-Flash | 428B (23B) | MXFP8 + NVFP4 专家 | ~252 GB | **~7.5 KiB 推导（每 rank，fp8，TP8）** | 8 | SM120：TP8 + Marlin；SM100：TP8 + MegaMoE | [8×72 配方方案 C](recipes/zh-CN/8x-72gb-pcie.md#方案-c大-nvfp4-moeminimax-m31-flash252-gbsm120-绕行方案) · [JSON](benchmarks/data/minimax-m31-flash-8x72-sm120.json) |
-| DeepSeek-V4.1-Flash-1017 | 538B 级 | FP8 + FP4 专家 | ~510 GB（476 GiB） | **~785 B 实测** · ~2.6 KiB 报告值 † | 8 | TP8 + EP8；Engram 表名义上放主机（实测暂未释放显存） | [8×72 TP8 矩阵](benchmarks/data/deepseek-v41-flash-8x72-tp8.json) · [部署手册](https://github.com/Lowaltitudeflight/llm-private-deploy-handbook) |
+| DeepSeek-V4.1-Flash-1017 | 538B 级 | FP8 + FP4 专家 | ~510 GB（476 GiB） | **~785 B 实测** · ~2.6 KiB 报告值 † | 8 | TP8 + EP8；Engram 表名义上放主机（实测暂未释放显存） | [8×72 TP8 矩阵](benchmarks/data/deepseek-v41-flash-8x72-tp8.json) · [部署手册](https://github.com/Lowaltitudeflight/llm-private-deploy-handbook) · [跨机 PD 实测](articles/csdn-kua-ji-pd-fenli-128k.md) |
 
 ## KV/token 推导
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0] - 2026-11-12
+
+### Added
+
+- **Cross-machine PD disaggregation article** (`articles/csdn-kua-ji-pd-fenli-128k.md`):
+  8+8-card cross-architecture build (RTX PRO 5000 + H200) serving DeepSeek-V4.1-Flash
+  at 128 K context over gigabit TCP; 12 h dual-side stability watch passed (720x2 samples,
+  zero failures). Three vLLM KV-connector failure modes documented; SGLang + Mooncake
+  validated. Includes the 8x KV-pool over-provisioning pitfall, the mrr sweet spot,
+  the dual-instance-vs-PD verdict, and the bandwidth formula
+  (Gbps = 5 x KV_per_token / prefill_time_per_token).
+- **MODEL_MATRIX row** for DeepSeek-V4.1-Flash (FP8 + FP4 experts, ~476 GB,
+  ~22 KiB/token fp8 KV, cross-machine PD validated).
+
 All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions use
 [Semantic Versioning](https://semver.org/).

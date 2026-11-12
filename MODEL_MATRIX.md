@@ -21,7 +21,7 @@ Which models have actually been run on the hardware this guide targets, how much
 | GLM-5.3-Flash | ~355B | FP8 | ~306 GB | ~96 KiB (fp8 KV) † | 6–8 | TP8 + EP8 | [GLM TP8+EP8 data](benchmarks/README.md#glm-53-flash-fp8-tp8ep8-on-two-96-gb-pcie-hosts-2026-10-22) |
 | GLM-5.3-Flash | ~355B | NVFP4 | ~190 GB | ~96 KiB (fp8 KV) † | 4–6 | TP4/TP8 + EP; measure | Derived |
 | MiniMax-M3.1-Flash | 428B (23B) | MXFP8 + NVFP4 experts | ~252 GB | **~7.5 KiB derived (per rank, fp8, TP8)** | 8 | TP8 + Marlin on SM120; TP8 + MegaMoE on SM100 | [8×72 recipe Case C](recipes/8x-72gb-pcie.md#case-c-large-nvfp4-moe-minimax-m31-flash-252-gb--sm120-workaround) · [JSON](benchmarks/data/minimax-m31-flash-8x72-sm120.json) |
-| DeepSeek-V4.1-Flash-1017 | 538B-class | FP8 + FP4 experts | ~510 GB (476 GiB) | **~785 B measured** · ~2.6 KiB reported † | 8 | TP8 + EP8; Engram tables nominally on host (no VRAM saving observed yet) | [8×72 TP8 matrix](benchmarks/data/deepseek-v41-flash-8x72-tp8.json) · [handbook](https://github.com/Lowaltitudeflight/llm-private-deploy-handbook) |
+| DeepSeek-V4.1-Flash-1017 | 538B-class | FP8 + FP4 experts | ~510 GB (476 GiB) | **~785 B measured** · ~2.6 KiB reported † | 8 | TP8 + EP8; Engram tables nominally on host (no VRAM saving observed yet) | [8×72 TP8 matrix](benchmarks/data/deepseek-v41-flash-8x72-tp8.json) · [handbook](https://github.com/Lowaltitudeflight/llm-private-deploy-handbook)  · [cross-machine PD study](articles/csdn-kua-ji-pd-fenli-128k.md) |
 
 ## KV/token derivation
 
